@@ -1,5 +1,5 @@
 import { useNavigate } from "react-router-dom";
-import { BUSINESSES, CATEGORIES } from "../data/mock";
+import { useBusinesses, useCategories } from "../hooks/useApi";
 import SectionHeader from "../components/SectionHeader";
 import PickCard from "../components/cards/PickCard";
 import SmallCard from "../components/cards/SmallCard";
@@ -8,11 +8,14 @@ import WhyPickedPill from "../components/ui/WhyPickedPill";
 
 export default function Discovery() {
   const navigate = useNavigate();
+  const { data: businesses } = useBusinesses();
+  const { data: categories } = useCategories();
 
-  const top = BUSINESSES.slice(0, 4);
-  const trending = [BUSINESSES[2], BUSINESSES[5], BUSINESSES[13]];
-  const becauseLiked = BUSINESSES[0]; // Otello
-  const becauseList = [BUSINESSES[7], BUSINESSES[10], BUSINESSES[1]];
+  const philly = businesses.filter((b) => b.city === "Philadelphia");
+  const top = philly.slice(0, 4);
+  const trending = philly.filter((b) => b.match >= 88).slice(0, 3);
+  const becauseLiked = philly.find((b) => b.id === "otello") ?? philly[0];
+  const becauseList = philly.filter((b) => b.id !== becauseLiked?.id).slice(0, 3);
 
   return (
     <div className="mx-auto px-4 sm:px-8 pt-10" style={{ maxWidth: 1280 }}>
@@ -155,7 +158,7 @@ export default function Discovery() {
       <section className="pb-8">
         <SectionHeader eyebrow="Browse by mood" title="A short shelf of categories" />
         <div className="grid grid-cols-3 sm:grid-cols-6 gap-4">
-          {CATEGORIES.map((c) => (
+          {categories.map((c) => (
             <button
               key={c.name}
               onClick={() => navigate("/search")}

@@ -1,0 +1,120 @@
+from pydantic import BaseModel
+from typing import Optional
+
+
+class ReviewModel(BaseModel):
+    author: str
+    rating: float
+    text: str
+
+
+class CoordsModel(BaseModel):
+    x: float
+    y: float
+
+
+class BusinessModel(BaseModel):
+    id: str
+    name: str
+    category: str
+    city: str
+    neighborhood: str
+    rating: float
+    reviews: int
+    price: str
+    match: int
+    image: str
+    cover: str
+    gallery: list[str]
+    attributes: list[str]
+    whyPicked: str
+    excerpt: str
+    cf: int
+    ctx: int
+    pop: int
+    coords: CoordsModel
+    hours: str
+    address: str
+    tags: list[str]
+    reviewList: list[ReviewModel]
+
+
+class CategoryModel(BaseModel):
+    name: str
+    img: str
+    count: int
+
+
+class UserStatsModel(BaseModel):
+    saved: int
+    reviews: int
+    cities: int
+    avg_rating: float
+
+
+class TasteProfileModel(BaseModel):
+    italian: float
+    asian: float
+    cozy: float
+    lively: float
+    cheap: float
+    special: float
+
+
+class UserModel(BaseModel):
+    id: str
+    name: str
+    first_name: str
+    avatar: str
+    location: str
+    bio: str
+    member_since: str
+    stats: UserStatsModel
+    taste: TasteProfileModel
+    saved_business_ids: list[str]
+    cities_visited: list[str]
+
+
+class RecommendationModel(BaseModel):
+    business_id: str
+    score: float
+    cf: int
+    ctx: int
+    pop: int
+
+
+class SignalDetailsModel(BaseModel):
+    cf_reasoning: str
+    ctx_reasoning: str
+    pop_reasoning: str
+
+
+class ExplanationModel(BaseModel):
+    business_id: str
+    user_id: str
+    match: int
+    cf: int
+    ctx: int
+    pop: int
+    signal_details: SignalDetailsModel
+
+
+class PaginatedBusinesses(BaseModel):
+    items: list[BusinessModel]
+    total: int
+
+
+class SearchResponse(BaseModel):
+    items: list[BusinessModel]
+    total: int
+
+
+class RecommendationsResponse(BaseModel):
+    items: list[RecommendationModel]
+    generated_at: str
+
+
+class HealthResponse(BaseModel):
+    status: str
+    model_version: str
+    loaded_at: str

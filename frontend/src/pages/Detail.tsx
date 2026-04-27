@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { BUSINESSES } from "../data/mock";
+import { useBusiness } from "../hooks/useApi";
 import Rating from "../components/ui/Rating";
 import ExplanationCard from "../components/ExplanationCard";
 
@@ -10,9 +10,14 @@ type Tab = (typeof TABS)[number];
 export default function Detail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const { data: b, loading } = useBusiness(id);
   const [tab, setTab] = useState<Tab>("Overview");
 
-  const b = BUSINESSES.find((x) => x.id === id) ?? BUSINESSES[0];
+  if (loading || !b) return (
+    <div className="mx-auto px-4 sm:px-8 pt-20 text-center" style={{ maxWidth: 1280 }}>
+      <div className="font-serif italic text-[18px]" style={{ color: "#78716C" }}>Loading…</div>
+    </div>
+  );
 
   return (
     <div className="mx-auto px-4 sm:px-8 pt-8" style={{ maxWidth: 1280 }}>
