@@ -219,11 +219,8 @@ __marimo__/
 # Streamlit
 .streamlit/secrets.toml
 
-# Lantern — generated model artifacts (run notebooks/01_train.ipynb to regenerate)
-backend/data/*.parquet
-backend/data/eval.json
-backend/data/id_map.json
-backend/data/yelp_dataset/
+# Lantern — dataset and all generated artifacts (too large / not redistributable)
+backend/data/
 
 # Frontend env overrides
 frontend/.env.local
