@@ -1,0 +1,106 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --canvas: #FAF6F0;
+    --surface: #FFFFFF;
+    --ink: #1C1917;
+    --muted: #78716C;
+    --border: #E7E5E4;
+    --terracotta: #C2410C;
+    --teal: #115E59;
+    --amber: #EAB308;
+    --peach: #FED7AA;
+  }
+
+  html,
+  body {
+    background: var(--canvas);
+    color: var(--ink);
+  }
+
+  body {
+    font-family: "Inter", system-ui, sans-serif;
+    font-feature-settings: "ss01", "cv11";
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    margin: 0;
+  }
+
+  ::selection {
+    background: var(--peach);
+    color: var(--ink);
+  }
+
+  ::-webkit-scrollbar {
+    width: 10px;
+  }
+  ::-webkit-scrollbar-track {
+    background: var(--canvas);
+  }
+  ::-webkit-scrollbar-thumb {
+    background: var(--border);
+    border-radius: 999px;
+  }
+}
+
+/* Custom slider — must live outside Tailwind layers */
+.lantern-slider {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 4px;
+  background: var(--border);
+  border-radius: 999px;
+  outline: none;
+  width: 100%;
+}
+
+.lantern-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--ink);
+  border: 2px solid white;
+  cursor: pointer;
+  box-shadow: 0 1px 4px rgba(28, 25, 23, 0.3);
+  transition: transform 0.15s ease;
+}
+
+.lantern-slider::-webkit-slider-thumb:hover {
+  transform: scale(1.15);
+}
+
+.lantern-slider::-moz-range-thumb {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--ink);
+  border: 2px solid white;
+  cursor: pointer;
+  box-shadow: 0 1px 4px rgba(28, 25, 23, 0.3);
+}
+
+.lantern-slider[data-kind="cf"]::-webkit-slider-thumb {
+  background: var(--terracotta);
+}
+.lantern-slider[data-kind="cf"]::-moz-range-thumb {
+  background: var(--terracotta);
+}
+
+.lantern-slider[data-kind="ctx"]::-webkit-slider-thumb {
+  background: var(--teal);
+}
+.lantern-slider[data-kind="ctx"]::-moz-range-thumb {
+  background: var(--teal);
+}
+
+.lantern-slider[data-kind="pop"]::-webkit-slider-thumb {
+  background: var(--amber);
+}
+.lantern-slider[data-kind="pop"]::-moz-range-thumb {
+  background: var(--amber);
+}
