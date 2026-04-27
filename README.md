@@ -1,53 +1,119 @@
 # Lantern — Hybrid Restaurant Recommender
 
 **MINE4201-01 · Taller 2 · Semester 2026-1**  
-A hybrid (ALS collaborative filtering + context-aware re-ranking) recommender system with editorial magazine UI, built on the Yelp Open Dataset (Philadelphia).
+Sistema recomendador híbrido (ALS + re-ranking contextual) con UI editorial tipo revista, construido sobre el Yelp Open Dataset (Philadelphia).
 
 ---
 
-## Quick start — local development
+## Cómo correrlo localmente
 
-### 1. Frontend
+### Prerequisitos
+
+- **Node.js** ≥ 18 (`node --version`)
+- **Python** ≥ 3.11 (`python --version`)
+- **Git**
+
+---
+
+### 1. Clonar e instalar
 
 ```bash
-cd frontend
-npm install
-cp .env.example .env.local          # defaults to http://localhost:8000
-npm run dev                          # http://localhost:5173
+git clone https://github.com/<tu-usuario>/A-Recommender-System-for-Yelp-Reviews.git
+cd A-Recommender-System-for-Yelp-Reviews
 ```
 
-### 2. Backend
+---
+
+### 2. Backend (FastAPI)
 
 ```bash
 cd backend
+
+# Crear entorno virtual
 python -m venv venv
-# Windows
+
+# Activar — Windows
 venv\Scripts\activate
-# macOS/Linux
+# Activar — macOS/Linux
 source venv/bin/activate
 
+# Instalar dependencias
 pip install -r requirements.txt
-uvicorn app.main:app --reload        # http://localhost:8000
+
+# Correr el servidor
+uvicorn app.main:app --reload
 ```
 
-The API falls back to mock JSON when the parquets are missing — the frontend works without running the notebook first.
+El servidor queda en **http://localhost:8000**
 
-### 3. Train the model (optional, to get real ALS scores)
+Verificar que funciona:
+```bash
+curl http://localhost:8000/health
+# {"status":"ok","model_version":"mock-0.1.0","loaded_at":"..."}
 
-Place the Yelp Open Dataset files in `backend/data/yelp_dataset/`:
-- `yelp_academic_dataset_review.json`
-- `yelp_academic_dataset_business.json`
+curl "http://localhost:8000/recommendations?user_id=camila&limit=3"
+curl "http://localhost:8000/explanations/otello?user_id=camila"
+```
 
-Then run the notebook:
+> **Nota:** sin parquets, el API usa datos mock de `data/mock/`. El frontend funciona igual — ver sección "Entrenar el modelo" si quieres scores reales del ALS.
+
+---
+
+### 3. Frontend (Vite + React)
+
+Abrir **una nueva terminal** (dejar el backend corriendo):
+
+```bash
+cd frontend
+
+# Instalar dependencias
+npm install
+
+# Crear archivo de entorno
+cp .env.example .env.local
+# .env.local ya tiene: VITE_API_URL=http://localhost:8000
+
+# Correr el servidor de desarrollo
+npm run dev
+```
+
+La app queda en **http://localhost:5173**
+
+Navegar entre las 5 pantallas:
+- `/` — Discovery (picks del día)
+- `/search` — Búsqueda con mapa
+- `/business/otello` — Detalle con ExplanationCard
+- `/explain` — Sliders que recomputan en vivo
+- `/profile` — Perfil de usuario
+
+---
+
+### 4. Entrenar el modelo ALS (opcional)
+
+Si tienes el **Yelp Open Dataset**, copia los archivos:
+
+```
+backend/data/yelp_dataset/
+  yelp_academic_dataset_business.json
+  yelp_academic_dataset_review.json
+```
+
+Luego desde el entorno virtual activado:
 
 ```bash
 cd backend
 jupyter notebook notebooks/01_train.ipynb
-# Run all cells — takes ~10-20 min on Philadelphia subset
-# Outputs: data/top_n.parquet, data/explanations.parquet, data/eval.json
+# Ejecutar todas las celdas (10-20 min en el subset de Philadelphia)
 ```
 
-Restart the backend after the notebook finishes. `GET /health` will show `model_version: als-0.1.0`.
+Genera:
+- `data/top_n.parquet` — top-50 recomendaciones por usuario
+- `data/explanations.parquet` — breakdown cf/ctx/pop por par (user, business)
+- `data/eval.json` — Recall@K, NDCG@K, MAP@K
+
+Reiniciar el backend. `GET /health` mostrará `model_version: als-0.1.0`.
+
+> **Sin Yelp dataset:** el notebook genera datos sintéticos automáticamente (fallback). Los parquets se crean igual y el API los usa.
 
 ---
 
@@ -58,19 +124,19 @@ Restart the backend after the notebook finishes. `GET /health` will show `model_
 ```bash
 cd frontend
 npx vercel --prod
-# Set env var: VITE_API_URL=https://<your-cloud-run-url>
+# En el dashboard de Vercel, agregar env var:
+# VITE_API_URL = https://<tu-url-de-cloud-run>
 ```
-
-The `vercel.json` rewrite rule handles client-side routing.
 
 ### Backend → GCP Cloud Run
 
 ```bash
 cd backend
-# Build and push image
+
+# Construir y subir imagen
 gcloud builds submit --tag gcr.io/<PROJECT_ID>/lantern-api
 
-# Deploy (min-instances=1 keeps it warm during the demo)
+# Desplegar (min-instances=1 para que no haya cold start durante la sustentación)
 gcloud run deploy lantern-api \
   --image gcr.io/<PROJECT_ID>/lantern-api \
   --platform managed \
@@ -81,65 +147,66 @@ gcloud run deploy lantern-api \
   --port 8080
 ```
 
-After deploy, update `VITE_API_URL` in Vercel with the Cloud Run URL and redeploy the frontend.
+---
+
+## API
+
+| Endpoint | Descripción |
+|----------|-------------|
+| `GET /health` | Versión del modelo + timestamp de inicio |
+| `GET /businesses?city=Philadelphia&limit=50` | Lista paginada de negocios |
+| `GET /businesses/:id` | Negocio individual con reviews y galería |
+| `GET /categories` | Categorías con conteos |
+| `GET /users/me` | Perfil mock (Camila Restrepo) |
+| `GET /recommendations?user_id=camila&limit=10` | Top-N desde parquet |
+| `GET /explanations/:id?user_id=camila` | Breakdown cf/ctx/pop |
+| `GET /search?q=&category=&price=` | Búsqueda filtrada |
+
+Documentación interactiva: **http://localhost:8000/docs**
 
 ---
 
-## API reference
+## Arquitectura del modelo
 
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/health` | Model version + startup time |
-| GET | `/businesses?city=Philadelphia&limit=50` | Paginated business list |
-| GET | `/businesses/:id` | Single business with reviews and gallery |
-| GET | `/categories` | Category list with counts |
-| GET | `/users/me` | Mock user profile (Camila Restrepo) |
-| GET | `/recommendations?user_id=camila&limit=10` | Top-N recommendations from parquet |
-| GET | `/explanations/:business_id?user_id=camila` | Signal breakdown (cf/ctx/pop) |
-| GET | `/search?q=&category=&price=` | Filtered search |
+```
+Matriz interacciones  ──►  ALS (factors=64, iterations=20, alpha=10)
+                                 │
+                                 ▼  score CF  (0-1, normalizado)
+                        Re-ranker contextual
+                        (hora del día × categoría)
+                                 │
+                                 ▼  score CTX (0-1)
+                        Prior de popularidad
+                        (log review_count, normalizado)
+                                 │
+                                 ▼
+              Híbrido = 0.60·CF + 0.25·CTX + 0.15·POP
+                                 │
+                        Pre-cómputo top-50/usuario
+                        ──────────────────────────
+                        top_n.parquet · explanations.parquet
+```
+
+El breakdown por par (user, business) alimenta la `ExplanationCard` y los sliders de la pantalla Explain que recomputan en vivo con `useMemo`.
 
 ---
 
-## Model architecture
+## Estructura del proyecto
 
 ```
-User interaction matrix  ──►  ALS (factors=64, iterations=20)
-                                   │
-                                   ▼  CF score (0-1)
-                          Context re-ranker (time of day, category)
-                                   │
-                                   ▼  Context score (0-1)
-                          Popularity prior (log review_count, normalized)
-                                   │
-                                   ▼
-                    Hybrid = 0.60·CF + 0.25·CTX + 0.15·POP
-                                   │
-                          Pre-computed top-50/user
-                          ─────────────────────────
-                          top_n.parquet · explanations.parquet
-```
-
-Signal breakdown per (user, business) pair drives the `ExplanationCard` and the live Explain page sliders.
-
----
-
-## Project structure
-
-```
-├── frontend/          Vite + React + TypeScript + Tailwind CSS
-│   ├── src/pages/     Discovery · Search · Detail · Explain · Profile
-│   ├── src/components/
+├── frontend/              Vite + React + TypeScript + Tailwind CSS
+│   ├── src/pages/         Discovery · Search · Detail · Explain · Profile
+│   ├── src/components/    Cards · ExplanationCard · RadarChart · StylizedMap
+│   ├── src/hooks/         useApi.ts (fallback a mock si el API no responde)
 │   └── vercel.json
 ├── backend/
-│   ├── app/           FastAPI application
-│   │   ├── routers/   businesses · users · recommendations · search
-│   │   ├── services/  recommender.py (parquet loader)
-│   │   └── models.py  Pydantic v2 models
-│   ├── notebooks/     01_train.ipynb (ALS training pipeline)
-│   ├── data/
-│   │   ├── mock/      businesses.json · categories.json · user.json
-│   │   └── *.parquet  Generated by notebook (git-ignored)
+│   ├── app/
+│   │   ├── routers/       businesses · users · recommendations · search
+│   │   ├── services/      recommender.py (carga parquets en startup)
+│   │   └── models.py      Pydantic v2
+│   ├── notebooks/         01_train.ipynb (pipeline ALS completo)
+│   ├── data/mock/         businesses.json · categories.json · user.json
 │   ├── requirements.txt
 │   └── Dockerfile
-└── Claude Design/     Original CDN+Babel prototype (reference, immutable)
+└── Claude Design/         Prototipo CDN+Babel original (referencia, no modificar)
 ```
