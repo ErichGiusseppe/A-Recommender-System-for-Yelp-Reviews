@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { BUSINESSES } from "../data/mock";
+import { useBusinesses } from "../hooks/useApi";
 import type { TasteProfile, SignalWeights } from "../types";
 import RadarChart from "../components/RadarChart";
 import SignalControl from "../components/SignalControl";
@@ -18,6 +18,7 @@ const TASTE_ROWS = [
 export default function Explain() {
   const navigate = useNavigate();
   const { id: _businessId } = useParams<{ id?: string }>();
+  const { data: businesses } = useBusinesses();
 
   const [taste, setTaste] = useState<TasteProfile>({
     italian: 80, asian: 65, cozy: 90, lively: 50, cheap: 35, special: 75,
@@ -27,7 +28,7 @@ export default function Explain() {
   });
 
   const scored = useMemo(() => {
-    return BUSINESSES.map((b) => {
+    return businesses.map((b) => {
       const tagBoost = (b.tags || []).reduce((acc, t) => {
         if (t === "cozy") return acc + (taste.cozy - 50) * 0.4;
         if (t === "lively") return acc + (taste.lively - 50) * 0.4;
@@ -42,7 +43,7 @@ export default function Explain() {
       const popScore = b.pop * (weights.pop / 100);
       return { ...b, score: cfScore + ctxScore + popScore };
     }).sort((a, b) => b.score - a.score);
-  }, [taste, weights]);
+  }, [taste, weights, businesses]);
 
   const inList = scored.slice(0, 4);
   const outList = scored.slice(-3);
@@ -178,36 +179,46 @@ export default function Explain() {
           />
 
           {/* Current mix bar */}
-          <div className="mt-4 p-4 rounded-lg" style={{ background: "#FAF6F0" }}>
-            <div
-              className="font-sans text-[10px] uppercase tracking-[0.16em] mb-2"
-              style={{ color: "#78716C" }}
-            >
-              Current mix
-            </div>
-            <div
-              className="flex h-2.5 rounded-full overflow-hidden"
-              style={{ border: "1px solid #E7E5E4" }}
-            >
-              <div style={{ width: `${weights.cf}%`, background: "#C2410C" }} />
-              <div style={{ width: `${weights.ctx}%`, background: "#115E59" }} />
-              <div style={{ width: `${weights.pop}%`, background: "#EAB308" }} />
-            </div>
-            <div
-              className="flex justify-between font-sans text-[11px] tabular-nums mt-2"
-              style={{ color: "#78716C" }}
-            >
-              <span className="flex items-center gap-1">
-                <CategoryDot kind="cf" /> {weights.cf}%
-              </span>
-              <span className="flex items-center gap-1">
-                <CategoryDot kind="ctx" /> {weights.ctx}%
-              </span>
-              <span className="flex items-center gap-1">
-                <CategoryDot kind="pop" /> {weights.pop}%
-              </span>
-            </div>
-          </div>
+          {(() => {
+            const total = weights.cf + weights.ctx + weights.pop || 1;
+            const pct = {
+              cf:  Math.round(weights.cf  / total * 100),
+              ctx: Math.round(weights.ctx / total * 100),
+              pop: Math.round(weights.pop / total * 100),
+            };
+            return (
+              <div className="mt-4 p-4 rounded-lg" style={{ background: "#FAF6F0" }}>
+                <div
+                  className="font-sans text-[10px] uppercase tracking-[0.16em] mb-2"
+                  style={{ color: "#78716C" }}
+                >
+                  Current mix
+                </div>
+                <div
+                  className="flex h-2.5 rounded-full overflow-hidden"
+                  style={{ border: "1px solid #E7E5E4" }}
+                >
+                  <div style={{ width: `${pct.cf}%`, background: "#C2410C" }} />
+                  <div style={{ width: `${pct.ctx}%`, background: "#115E59" }} />
+                  <div style={{ width: `${pct.pop}%`, background: "#EAB308" }} />
+                </div>
+                <div
+                  className="flex justify-between font-sans text-[11px] tabular-nums mt-2"
+                  style={{ color: "#78716C" }}
+                >
+                  <span className="flex items-center gap-1">
+                    <CategoryDot kind="cf" /> {pct.cf}%
+                  </span>
+                  <span className="flex items-center gap-1">
+                    <CategoryDot kind="ctx" /> {pct.ctx}%
+                  </span>
+                  <span className="flex items-center gap-1">
+                    <CategoryDot kind="pop" /> {pct.pop}%
+                  </span>
+                </div>
+              </div>
+            );
+          })()}
         </div>
 
         {/* Column 3 — Live preview */}

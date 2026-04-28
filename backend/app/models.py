@@ -32,6 +32,8 @@ class BusinessModel(BaseModel):
     cf: int
     ctx: int
     pop: int
+    lat: float = 39.9526
+    lng: float = -75.1652
     coords: CoordsModel
     hours: str
     address: str
@@ -61,6 +63,11 @@ class TasteProfileModel(BaseModel):
     special: float
 
 
+class SeasonBarModel(BaseModel):
+    label: str
+    value: int
+
+
 class UserModel(BaseModel):
     id: str
     name: str
@@ -73,6 +80,7 @@ class UserModel(BaseModel):
     taste: TasteProfileModel
     saved_business_ids: list[str]
     cities_visited: list[str]
+    season_taste: list[SeasonBarModel] = []
 
 
 class RecommendationModel(BaseModel):

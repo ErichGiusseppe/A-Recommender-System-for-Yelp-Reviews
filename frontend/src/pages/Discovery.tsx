@@ -1,5 +1,6 @@
 import { useNavigate } from "react-router-dom";
 import { useBusinesses, useCategories } from "../hooks/useApi";
+import { useNeighborhood } from "../contexts/NeighborhoodContext";
 import SectionHeader from "../components/SectionHeader";
 import PickCard from "../components/cards/PickCard";
 import SmallCard from "../components/cards/SmallCard";
@@ -10,12 +11,17 @@ export default function Discovery() {
   const navigate = useNavigate();
   const { data: businesses } = useBusinesses();
   const { data: categories } = useCategories();
+  const { city, neighborhood, openPicker } = useNeighborhood();
 
-  const philly = businesses.filter((b) => b.city === "Philadelphia");
-  const top = philly.slice(0, 4);
-  const trending = philly.filter((b) => b.match >= 88).slice(0, 3);
-  const becauseLiked = philly.find((b) => b.id === "otello") ?? philly[0];
-  const becauseList = philly.filter((b) => b.id !== becauseLiked?.id).slice(0, 3);
+  const displayPlace = neighborhood || city || "Philadelphia";
+  const cityBizs = businesses.length
+    ? businesses.filter((b) => b.city === (city || "Philadelphia"))
+    : [];
+  const displayBizs  = cityBizs.length ? cityBizs : businesses;
+  const top          = displayBizs.slice(0, 4);
+  const trending     = displayBizs.slice(4, 7);
+  const becauseLiked = displayBizs[0] ?? null;
+  const becauseList  = displayBizs.slice(1, 4);
 
   return (
     <div className="mx-auto px-4 sm:px-8 pt-10" style={{ maxWidth: 1280 }}>
@@ -23,10 +29,20 @@ export default function Discovery() {
       <section className="grid grid-cols-1 md:grid-cols-12 gap-8 pb-16">
         <div className="md:col-span-7 flex flex-col justify-end">
           <div
-            className="font-sans text-[11px] uppercase tracking-[0.22em] mb-5"
+            className="font-sans text-[11px] uppercase tracking-[0.22em] mb-5 flex items-center gap-2"
             style={{ color: "#78716C" }}
           >
-            ☾ &nbsp;Wednesday · 47°F · clear
+            <span>☾ &nbsp;Tonight ·</span>
+            <button
+              onClick={openPicker}
+              className="flex items-center gap-1 font-sans text-[11px] uppercase tracking-[0.22em] transition-colors hover:opacity-70"
+              style={{ color: "#C2410C" }}
+            >
+              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z" />
+              </svg>
+              {displayPlace}
+            </button>
           </div>
           <h1
             className="font-serif"
@@ -40,7 +56,7 @@ export default function Discovery() {
           >
             Tonight in
             <br />
-            <span style={{ fontStyle: "italic", color: "#C2410C" }}>Philadelphia</span>
+            <span style={{ fontStyle: "italic", color: "#C2410C" }}>{displayPlace}</span>
             <span style={{ color: "#1C1917" }}>.</span>
           </h1>
           <p
@@ -56,7 +72,7 @@ export default function Discovery() {
               className="font-sans text-[13px] font-medium px-5 py-2.5 rounded-full transition-all hover:-translate-y-[2px]"
               style={{ background: "#1C1917", color: "#FAF6F0" }}
             >
-              Browse all 142 picks
+              Browse all recommendations
             </button>
             <button
               onClick={() => navigate("/explain")}
@@ -122,23 +138,25 @@ export default function Discovery() {
       </section>
 
       {/* Because you liked */}
-      <section className="pb-16">
-        <SectionHeader
-          eyebrow="Pattern matching"
-          title={
-            <>
-              Because you liked{" "}
-              <em style={{ fontStyle: "italic" }}>{becauseLiked.name}</em>
-            </>
-          }
-          aside="3 nearby in this lane"
-        />
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-5">
-          {becauseList.map((b) => (
-            <SmallCard key={b.id} biz={b} />
-          ))}
-        </div>
-      </section>
+      {becauseLiked && (
+        <section className="pb-16">
+          <SectionHeader
+            eyebrow="Pattern matching"
+            title={
+              <>
+                Because you liked{" "}
+                <em style={{ fontStyle: "italic" }}>{becauseLiked.name}</em>
+              </>
+            }
+            aside="3 nearby in this lane"
+          />
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-5">
+            {becauseList.map((b) => (
+              <SmallCard key={b.id} biz={b} />
+            ))}
+          </div>
+        </section>
+      )}
 
       {/* Trending */}
       <section className="pb-16">

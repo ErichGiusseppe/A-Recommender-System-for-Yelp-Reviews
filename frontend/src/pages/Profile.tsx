@@ -1,16 +1,17 @@
 import { useNavigate } from "react-router-dom";
-import { BUSINESSES, USER } from "../data/mock";
+import { useMe, useSavedBusinesses } from "../hooks/useApi";
+import { useAuth } from "../contexts/AuthContext";
 import Rating from "../components/ui/Rating";
 import Stat from "../components/ui/Stat";
 import type { SeasonBar } from "../types";
 
-const SEASON_BARS: SeasonBar[] = [
-  { label: "Italian", value: 28 },
+const DEFAULT_BARS: SeasonBar[] = [
+  { label: "Italian",   value: 28 },
   { label: "Wine bars", value: 22 },
   { label: "Cocktails", value: 18 },
-  { label: "Brunch", value: 14 },
-  { label: "Coffee", value: 11 },
-  { label: "Asian", value: 7 },
+  { label: "Brunch",    value: 14 },
+  { label: "Coffee",    value: 11 },
+  { label: "Asian",     value: 7 },
 ];
 
 const BAR_COLORS = ["#C2410C", "#115E59", "#EAB308", "#78716C", "#78716C", "#78716C"];
@@ -18,10 +19,20 @@ const BAR_COLORS = ["#C2410C", "#115E59", "#EAB308", "#78716C", "#78716C", "#787
 const TABS = ["Saved", "Reviews", "Lists", "Following"] as const;
 
 export default function Profile() {
-  const navigate = useNavigate();
-  const saved = USER.saved_business_ids
-    .map((id) => BUSINESSES.find((b) => b.id === id))
-    .filter(Boolean) as typeof BUSINESSES;
+  const navigate  = useNavigate();
+  const { user: authUser } = useAuth();
+  const { data: me }   = useMe();
+  const { data: saved } = useSavedBusinesses(me.saved_business_ids);
+
+  const displayName = authUser?.name ?? me.name;
+  const nameParts   = displayName.split(" ");
+  const firstName   = nameParts[0];
+  const lastName    = nameParts.slice(1).join(" ");
+  const initials    = nameParts.map((p) => p[0]).slice(0, 2).join("").toUpperCase();
+
+  const seasonBars: SeasonBar[] =
+    me.season_taste && me.season_taste.length > 0 ? me.season_taste : DEFAULT_BARS;
+  const maxBarVal = Math.max(...seasonBars.map((r) => r.value), 1);
 
   return (
     <div className="mx-auto px-4 sm:px-8 pt-8" style={{ maxWidth: 1280 }}>
@@ -32,19 +43,26 @@ export default function Profile() {
       >
         <div className="sm:col-span-3">
           <div
-            className="aspect-square rounded-2xl bg-cover bg-center"
+            className="aspect-square rounded-2xl flex items-center justify-center"
             style={{
-              backgroundImage: `url(${USER.avatar})`,
+              background: "#1C1917",
               boxShadow: "0 8px 32px rgba(28,25,23,0.10)",
             }}
-          />
+          >
+            <span
+              className="font-serif text-[64px]"
+              style={{ color: "#FAF6F0", fontStyle: "italic" }}
+            >
+              {initials}
+            </span>
+          </div>
         </div>
         <div className="sm:col-span-9 flex flex-col justify-end">
           <div
             className="font-sans text-[11px] uppercase tracking-[0.22em] mb-3"
             style={{ color: "#C2410C" }}
           >
-            Member since {USER.member_since} · {USER.location}
+            Member since {me.member_since} · {me.location}
           </div>
           <h1
             className="font-serif"
@@ -56,23 +74,23 @@ export default function Profile() {
               fontWeight: 400,
             }}
           >
-            <span style={{ fontStyle: "italic" }}>{USER.first_name}</span> Restrepo
+            <span style={{ fontStyle: "italic" }}>{firstName}</span> {lastName}
           </h1>
           <p
             className="font-serif italic mt-4 max-w-[640px]"
             style={{ color: "#78716C", fontSize: 18, lineHeight: 1.5 }}
           >
-            {USER.bio}
+            {me.bio}
           </p>
 
           <div
             className="grid grid-cols-2 sm:grid-cols-4 gap-6 sm:gap-8 mt-8 pt-8"
             style={{ borderTop: "1px solid #E7E5E4" }}
           >
-            <Stat n={USER.stats.saved} label="Places saved" />
-            <Stat n={USER.stats.reviews} label="Reviews left" />
-            <Stat n={USER.stats.cities} label="Cities visited" />
-            <Stat n={USER.stats.avg_rating} label="Avg. rating given" />
+            <Stat n={me.stats.saved} label="Places saved" />
+            <Stat n={me.stats.reviews} label="Reviews left" />
+            <Stat n={me.stats.cities} label="Cities visited" />
+            <Stat n={me.stats.avg_rating} label="Avg. rating given" />
           </div>
         </div>
       </div>
@@ -107,73 +125,87 @@ export default function Profile() {
           >
             {saved.length}
           </span>{" "}
-          of {USER.stats.saved} shown
+          of {me.stats.saved} shown
         </span>
       </div>
 
       {/* Two-column layout */}
       <div className="grid grid-cols-1 lg:grid-cols-[1fr_0.42fr] gap-8 lg:gap-10 pb-16">
         {/* Saved grid */}
-        <div className="grid grid-cols-2 sm:grid-cols-3 gap-5">
-          {saved.map((b) => (
-            <button
-              key={b.id}
-              onClick={() => navigate(`/business/${b.id}`)}
-              className="text-left transition-all hover:-translate-y-[2px] group"
+        <div>
+          {saved.length === 0 ? (
+            <div
+              className="flex flex-col items-center justify-center py-20"
+              style={{ color: "#78716C" }}
             >
-              <div className="aspect-[4/5] rounded-xl overflow-hidden relative">
-                <img
-                  src={b.image}
-                  alt={b.name}
-                  className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-[1.02]"
-                />
-                <div className="absolute top-3 right-3">
-                  <div
-                    className="w-8 h-8 rounded-full flex items-center justify-center"
-                    style={{ background: "rgba(255,255,255,0.92)" }}
-                  >
-                    <span style={{ color: "#C2410C" }}>♥</span>
-                  </div>
-                </div>
+              <div className="font-serif italic text-[18px] mb-2">Loading your top picks…</div>
+              <div className="font-sans text-[12px]" style={{ color: "#A8A29E" }}>
+                Your saved places will appear here.
               </div>
-              <div className="mt-3">
-                <div className="flex items-baseline justify-between gap-2">
-                  <h3
-                    className="font-serif truncate"
-                    style={{
-                      color: "#1C1917",
-                      fontSize: 18,
-                      fontWeight: 500,
-                      letterSpacing: "-0.005em",
-                    }}
-                  >
-                    {b.name}
-                  </h3>
-                  <span
-                    className="font-sans text-[11px] tabular-nums"
-                    style={{ color: "#78716C" }}
-                  >
-                    {b.price}
-                  </span>
-                </div>
-                <div
-                  className="font-sans text-[11px] uppercase tracking-[0.14em] mt-1"
-                  style={{ color: "#78716C" }}
+            </div>
+          ) : (
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-5">
+              {saved.map((b) => (
+                <button
+                  key={b.id}
+                  onClick={() => navigate(`/business/${b.id}`)}
+                  className="text-left transition-all hover:-translate-y-[2px] group"
                 >
-                  {b.category} · {b.city}
-                </div>
-                <div className="flex items-center gap-3 mt-2">
-                  <Rating value={b.rating} />
-                  <span
-                    className="font-sans text-[11px] tabular-nums"
-                    style={{ color: "#78716C" }}
-                  >
-                    · {b.reviews}
-                  </span>
-                </div>
-              </div>
-            </button>
-          ))}
+                  <div className="aspect-[4/5] rounded-xl overflow-hidden relative">
+                    <img
+                      src={b.image}
+                      alt={b.name}
+                      className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-[1.02]"
+                    />
+                    <div className="absolute top-3 right-3">
+                      <div
+                        className="w-8 h-8 rounded-full flex items-center justify-center"
+                        style={{ background: "rgba(255,255,255,0.92)" }}
+                      >
+                        <span style={{ color: "#C2410C" }}>♥</span>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="mt-3">
+                    <div className="flex items-baseline justify-between gap-2">
+                      <h3
+                        className="font-serif truncate"
+                        style={{
+                          color: "#1C1917",
+                          fontSize: 18,
+                          fontWeight: 500,
+                          letterSpacing: "-0.005em",
+                        }}
+                      >
+                        {b.name}
+                      </h3>
+                      <span
+                        className="font-sans text-[11px] tabular-nums"
+                        style={{ color: "#78716C" }}
+                      >
+                        {b.price}
+                      </span>
+                    </div>
+                    <div
+                      className="font-sans text-[11px] uppercase tracking-[0.14em] mt-1"
+                      style={{ color: "#78716C" }}
+                    >
+                      {b.category} · {b.city}
+                    </div>
+                    <div className="flex items-center gap-3 mt-2">
+                      <Rating value={b.rating} />
+                      <span
+                        className="font-sans text-[11px] tabular-nums"
+                        style={{ color: "#78716C" }}
+                      >
+                        · {b.reviews}
+                      </span>
+                    </div>
+                  </div>
+                </button>
+              ))}
+            </div>
+          )}
         </div>
 
         {/* Side panel */}
@@ -203,7 +235,7 @@ export default function Profile() {
             </h3>
 
             <div className="space-y-2.5 mt-5">
-              {SEASON_BARS.map((row, i) => (
+              {seasonBars.map((row, i) => (
                 <div key={row.label}>
                   <div className="flex justify-between font-sans text-[11px] mb-1">
                     <span style={{ color: "#1C1917" }}>{row.label}</span>
@@ -218,8 +250,8 @@ export default function Profile() {
                     <div
                       className="h-full rounded-full"
                       style={{
-                        width: `${(row.value / 28) * 100}%`,
-                        background: BAR_COLORS[i],
+                        width: `${(row.value / maxBarVal) * 100}%`,
+                        background: BAR_COLORS[i] ?? "#78716C",
                       }}
                     />
                   </div>
@@ -236,10 +268,8 @@ export default function Profile() {
                 borderTop: "1px solid #E7E5E4",
               }}
             >
-              You leaned hard into pasta and natural wine this spring — 50% of saves were
-              Italian or wine bars. Your weekend pattern shifted earlier, with brunch saves up
-              38%. We'd guess you're planning a trip to Italy.{" "}
-              <span style={{ color: "#C2410C" }}>Are you?</span>
+              Based on your top recommendations in Philadelphia.{" "}
+              <span style={{ color: "#C2410C" }}>Tune it below.</span>
             </p>
 
             <button
@@ -263,7 +293,7 @@ export default function Profile() {
               Cities you've eaten in
             </div>
             <div className="flex flex-wrap gap-1.5">
-              {USER.cities_visited.map((c) => (
+              {me.cities_visited.map((c) => (
                 <span
                   key={c}
                   className="font-sans text-[11px] px-2.5 py-1 rounded-full"

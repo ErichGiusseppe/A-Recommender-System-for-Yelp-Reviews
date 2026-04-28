@@ -1,16 +1,21 @@
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
+from pathlib import Path
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from app.models import HealthResponse
-from app.routers import businesses, users, recommendations, search
-from app.services import recommender
+from app.routers import businesses, users, recommendations, search, auth_router
+from app.services import recommender, business_store
+
+_PHOTOS_DIR = Path(__file__).parent.parent / "data" / "real" / "photos" / "photos"
 
 _STARTED_AT = datetime.now(timezone.utc).isoformat()
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    business_store.startup()
     recommender.startup()
     yield
 
@@ -34,10 +39,14 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+app.include_router(auth_router.router)
 app.include_router(businesses.router, tags=["businesses"])
 app.include_router(users.router, tags=["users"])
 app.include_router(recommendations.router, tags=["recommendations"])
 app.include_router(search.router, tags=["search"])
+
+if _PHOTOS_DIR.exists():
+    app.mount("/photos", StaticFiles(directory=str(_PHOTOS_DIR)), name="photos")
 
 
 @app.get("/health", response_model=HealthResponse, tags=["system"])

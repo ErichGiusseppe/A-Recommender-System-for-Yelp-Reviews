@@ -2,46 +2,37 @@ import { useState, useEffect } from "react";
 import { api } from "../lib/api";
 import type { Business, Category, User } from "../types";
 import { BUSINESSES, CATEGORIES, USER } from "../data/mock";
+import { useNeighborhood } from "../contexts/NeighborhoodContext";
 
-// Generic hook that falls back to mock data if the API is unreachable
 function useApiCall<T>(
   fetcher: () => Promise<T>,
-  fallback: T
+  fallback: T,
+  deps: unknown[] = []
 ): { data: T; loading: boolean; error: string | null } {
-  const [data, setData] = useState<T>(fallback);
+  const [data, setData]       = useState<T>(fallback);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError]     = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
     fetcher()
-      .then((result) => {
-        if (!cancelled) {
-          setData(result);
-          setError(null);
-        }
-      })
-      .catch(() => {
-        if (!cancelled) {
-          // Silently fall back to mock data — no API yet
-          setError(null);
-        }
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
+      .then((result) => { if (!cancelled) { setData(result); setError(null); } })
+      .catch(() => { if (!cancelled) setError(null); })
+      .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, deps);
 
   return { data, loading, error };
 }
 
 export function useBusinesses() {
+  const { city } = useNeighborhood();
   return useApiCall<Business[]>(
-    () => api.businesses({ limit: 50 }).then((r) => r.items),
-    BUSINESSES
+    () => api.businesses({ city: city || undefined, limit: 50 }).then((r) => r.items),
+    BUSINESSES,
+    [city]
   );
 }
 
@@ -54,15 +45,22 @@ export function useBusiness(id: string | undefined) {
 }
 
 export function useCategories() {
-  return useApiCall<Category[]>(
-    () => api.categories(),
-    CATEGORIES
-  );
+  return useApiCall<Category[]>(() => api.categories(), CATEGORIES);
 }
 
 export function useMe() {
-  return useApiCall<User>(
-    () => api.me(),
-    USER
+  return useApiCall<User>(() => api.me(), USER);
+}
+
+export function useSavedBusinesses(ids: string[]) {
+  const key = ids.join(",");
+  return useApiCall<Business[]>(
+    async () => {
+      if (!ids.length) return [];
+      const results = await Promise.all(ids.map((id) => api.business(id).catch(() => null)));
+      return results.filter(Boolean) as Business[];
+    },
+    [],
+    [key]
   );
 }

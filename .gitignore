@@ -221,7 +221,15 @@ __marimo__/
 
 # Lantern — dataset and all generated artifacts (too large / not redistributable)
 backend/data/
+backend/notebook_env/
+backend/generate_parquets.py
+backend/.env
+backend/.env.example
 
 # Frontend env overrides
 frontend/.env.local
 frontend/.env
+frontend/.env.example
+
+# Local tool directories (hidden)
+.*/

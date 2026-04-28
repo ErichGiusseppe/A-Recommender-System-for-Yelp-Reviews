@@ -1,30 +1,30 @@
 import { useState } from "react";
-import { BUSINESSES } from "../data/mock";
+import { useBusinesses } from "../hooks/useApi";
+import { useNeighborhood } from "../contexts/NeighborhoodContext";
 import Chip from "../components/ui/Chip";
 import SearchCard from "../components/cards/SearchCard";
-import StylizedMap from "../components/StylizedMap";
+import PhillyMap from "../components/PhillyMap";
 
 const FILTERS = [
   "All",
   "Italian",
-  "Specialty Coffee",
-  "Cocktail Bars",
+  "Coffee & Tea",
+  "Bars",
   "Mediterranean",
-  "Open late",
-  "Outdoor seating",
   "$$",
+  "$$$",
 ];
 
 export default function Search() {
-  const [filter, setFilter] = useState("All");
+  const [filter, setFilter]   = useState("All");
   const [hoverId, setHoverId] = useState<string | null>(null);
+  const { data: businesses }  = useBusinesses();
+  const { city, coords, neighborhood } = useNeighborhood();
 
-  const list = BUSINESSES.filter((b) => {
+  const list = businesses.filter((b) => {
     if (filter === "All") return true;
-    if (filter === "Open late") return b.attributes.includes("Open late");
-    if (filter === "Outdoor seating") return b.attributes.includes("Outdoor seating");
-    if (filter === "$$") return b.price === "$$";
-    return b.category === filter;
+    if (filter === "$$" || filter === "$$$") return b.price === filter;
+    return b.category === filter || b.tags.includes(filter.toLowerCase().replace(/\s+/g, "-"));
   }).slice(0, 9);
 
   return (
@@ -35,7 +35,7 @@ export default function Search() {
           className="font-sans text-[11px] uppercase tracking-[0.22em] mb-2"
           style={{ color: "#C2410C" }}
         >
-          Searching · Philadelphia
+          Searching · {neighborhood ? `${neighborhood}, ${city}` : city || "Philadelphia"}
         </div>
         <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
           <h1
@@ -74,7 +74,7 @@ export default function Search() {
         </div>
       </div>
 
-      {/* 60/40 split — stacks on mobile */}
+      {/* 60/40 split */}
       <div className="flex flex-col lg:grid lg:gap-8" style={{ gridTemplateColumns: "1fr 0.7fr" }}>
         <div className="space-y-4 mb-8 lg:mb-0">
           {list.map((b) => (
@@ -90,7 +90,13 @@ export default function Search() {
 
         <div className="relative hidden lg:block">
           <div className="sticky top-24">
-            <StylizedMap businesses={list} hoverId={hoverId} setHoverId={setHoverId} />
+            <PhillyMap
+              businesses={list}
+              center={coords}
+              neighborhoodName={neighborhood || "Philadelphia"}
+              hoverId={hoverId}
+              setHoverId={setHoverId}
+            />
           </div>
         </div>
       </div>

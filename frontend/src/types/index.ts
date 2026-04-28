@@ -32,6 +32,8 @@ export interface Business {
   cf: number;
   ctx: number;
   pop: number;
+  lat?: number;
+  lng?: number;
   coords: Coords;
   hours: string;
   address: string;
@@ -83,6 +85,7 @@ export interface User {
   taste: TasteProfile;
   saved_business_ids: string[];
   cities_visited: string[];
+  season_taste?: SeasonBar[];
 }
 
 export interface Recommendation {

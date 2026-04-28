@@ -108,6 +108,23 @@ export default function StylizedMap({ businesses, hoverId, setHoverId }: Stylize
           );
         })}
 
+        {/* Guide base — Center City Philadelphia */}
+        <g transform="translate(320,370)">
+          <circle r="14" fill={T.canvas} stroke={T.terracotta} strokeWidth="2.5" />
+          <circle r="5" fill={T.terracotta} />
+          <text
+            textAnchor="middle"
+            y="-20"
+            fontFamily="Inter, sans-serif"
+            fontSize="8"
+            fill={T.terracotta}
+            letterSpacing="1"
+            fontWeight="600"
+          >
+            GUIDE BASE
+          </text>
+        </g>
+
         {/* Compass */}
         <g transform="translate(640,660)" opacity="0.5">
           <circle r="20" fill="white" stroke={T.border} />
