@@ -1,3 +1,6 @@
+# data folder
+data/
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[codz]
@@ -233,3 +236,4 @@ frontend/.env.example
 
 # Local tool directories (hidden)
 .*/
+models/svdpp_model.joblib
