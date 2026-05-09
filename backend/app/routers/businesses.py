@@ -9,11 +9,15 @@ from pathlib import Path
 router = APIRouter()
 
 _MOCK_DIR = Path(__file__).parent.parent.parent / "data" / "mock"
+_categories_cache: list[dict] | None = None
 
 
 def _load_categories() -> list[dict]:
-    with open(_MOCK_DIR / "categories.json", encoding="utf-8") as f:
-        return json.load(f)
+    global _categories_cache
+    if _categories_cache is None:
+        with open(_MOCK_DIR / "categories.json", encoding="utf-8") as f:
+            _categories_cache = json.load(f)
+    return _categories_cache
 
 
 @router.get("/businesses", response_model=PaginatedBusinesses)

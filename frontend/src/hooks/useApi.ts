@@ -51,7 +51,8 @@ export function useCategories() {
 }
 
 export function useMe() {
-  return useApiCall<User>(() => api.me(), USER);
+  const { token } = useAuth();
+  return useApiCall<User>(() => api.me(), USER, [token]);
 }
 
 export function useSavedBusinesses(ids: string[]) {
