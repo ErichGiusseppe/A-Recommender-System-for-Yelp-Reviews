@@ -9,7 +9,7 @@ from pathlib import Path
 sys.stdout.reconfigure(encoding='utf-8')
 
 DATA_DIR = Path('data')
-REAL_DIR = DATA_DIR / 'real' / 'structured'
+REAL_DIR = DATA_DIR / 'yelp_dataset'
 
 ALREADY_USED = {
     '_BcWyKQL16ndpBdggh2kNA',  # camila
