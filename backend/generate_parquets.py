@@ -22,7 +22,7 @@ sys.stdout.reconfigure(encoding='utf-8')
 warnings.filterwarnings('ignore')
 
 DATA_DIR  = Path('data')
-REAL_DIR  = DATA_DIR / 'real' / 'structured'
+REAL_DIR  = DATA_DIR / 'yelp_dataset'
 ARTIFACTS = DATA_DIR
 
 W_CF, W_CTX, W_POP  = 0.60, 0.25, 0.15
