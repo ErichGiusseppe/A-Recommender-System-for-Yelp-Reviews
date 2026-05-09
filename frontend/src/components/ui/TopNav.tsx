@@ -159,7 +159,7 @@ export default function TopNav() {
                       >
                         Switch account
                       </div>
-                      {DEMO_ACCOUNTS.filter(a => a.username !== user?.user_id).map(({ username, label }) => (
+                      {DEMO_ACCOUNTS.filter(a => a.label !== user?.name).map(({ username, label }) => (
                         <button
                           key={username}
                           onClick={() => switchTo(username)}
