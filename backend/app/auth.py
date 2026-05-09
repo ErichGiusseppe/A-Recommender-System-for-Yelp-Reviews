@@ -42,7 +42,7 @@ def _get_yelp_users() -> dict[str, str]:
     global _yelp_users
     if _yelp_users is not None:
         return _yelp_users
-    yelp_path = DATA_DIR / "real" / "structured" / "yelp_academic_dataset_user.json"
+    yelp_path = DATA_DIR / "yelp_dataset" / "yelp_academic_dataset_user.json"
     if not yelp_path.exists():
         _yelp_users = {}
         return _yelp_users
