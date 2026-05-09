@@ -14,6 +14,10 @@ const DEMO_ACCOUNTS = [
   { username: "camila", label: "Camila Restrepo" },
   { username: "daniel", label: "Daniel Park" },
   { username: "sara",   label: "Sara Gómez" },
+  { username: "alex",   label: "Alex Kim" },
+  { username: "maria",  label: "María Torres" },
+  { username: "carlos", label: "Carlos Méndez" },
+  { username: "sofia",  label: "Sofía Leal" },
 ];
 
 export default function TopNav() {

@@ -114,6 +114,10 @@ DEMO_DISPLAY_NAMES = {
     'camila': ('Camila Restrepo', 'CR'),
     'daniel': ('Daniel Park',     'DP'),
     'sara':   ('Sara Gómez',      'SG'),
+    'alex':   ('Alex Kim',        'AK'),
+    'maria':  ('María Torres',    'MT'),
+    'carlos': ('Carlos Méndez',   'CM'),
+    'sofia':  ('Sofía Leal',      'SL'),
 }
 
 TASTE_PROFILES = {
@@ -291,9 +295,12 @@ philly_rev_counts = (
     reviews_warm[reviews_warm['business_id'].isin(philly_biz_ids)]
     ['user_id'].value_counts()
 )
-top3 = philly_rev_counts.head(3).index.tolist()
+top7 = philly_rev_counts.head(7).index.tolist()
 
-DEMO_MAP = {'camila': top3[0], 'daniel': top3[1], 'sara': top3[2]}
+DEMO_MAP = {
+    'camila': top7[0], 'daniel': top7[1], 'sara':   top7[2],
+    'alex':   top7[3], 'maria':  top7[4], 'carlos': top7[5], 'sofia': top7[6],
+}
 EXTRA_MAP: dict[str, str] = {}
 candidates_path = ARTIFACTS / 'test_users_candidates.json'
 if candidates_path.exists():
