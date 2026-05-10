@@ -1,17 +1,11 @@
 import { useState, useEffect, useMemo } from "react";
-import { useBusinesses } from "../hooks/useApi";
+import { useBusinesses, useCategories } from "../hooks/useApi";
 import { useNeighborhood } from "../contexts/NeighborhoodContext";
 import { api } from "../lib/api";
 import Chip from "../components/ui/Chip";
 import SearchCard from "../components/cards/SearchCard";
 import PhillyMap from "../components/PhillyMap";
 import type { Business } from "../types";
-
-const CATEGORIES = [
-  "Italian", "Japanese", "Mexican", "Bars", "Coffee & Tea",
-  "Burgers", "Seafood", "Steakhouses", "Mediterranean",
-  "Breakfast & Brunch", "Pizza", "Thai", "Chinese", "Vegan",
-];
 
 const PRICES = ["$", "$$", "$$$"];
 
@@ -32,6 +26,7 @@ export default function Search() {
   const [hoverId, setHoverId]   = useState<string | null>(null);
 
   const { data: businesses }           = useBusinesses();
+  const { data: categoryList }         = useCategories();
   const { city, coords, neighborhood } = useNeighborhood();
 
   const timeBucket = useMemo(() => getTimeBucket(new Date().getHours()), []);
@@ -134,11 +129,11 @@ export default function Search() {
           )}
         </div>
 
-        {/* Category chips */}
+        {/* Category chips — from real data */}
         <div className="flex flex-wrap gap-2 mb-2">
-          {CATEGORIES.map((cat) => (
-            <Chip key={cat} active={category === cat} onClick={() => toggleCategory(cat)}>
-              {cat}
+          {categoryList.map((c) => (
+            <Chip key={c.name} active={category === c.name} onClick={() => toggleCategory(c.name)}>
+              {c.name}
             </Chip>
           ))}
         </div>

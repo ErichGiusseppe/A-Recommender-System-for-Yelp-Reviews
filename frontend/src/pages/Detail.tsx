@@ -4,7 +4,7 @@ import { useBusiness } from "../hooks/useApi";
 import Rating from "../components/ui/Rating";
 import ExplanationCard from "../components/ExplanationCard";
 
-const TABS = ["Overview", "Reviews", "Photos", "Menu", "About"] as const;
+const TABS = ["Overview", "Reviews", "Photos", "About"] as const;
 type Tab = (typeof TABS)[number];
 
 function Lightbox({
@@ -388,38 +388,130 @@ export default function Detail() {
 
           {tab === "Reviews" && (
             <div className="space-y-6">
-              {b.reviewList.map((r, i) => (
-                <div
-                  key={i}
-                  className="pb-6"
-                  style={{
-                    borderBottom:
-                      i < b.reviewList.length - 1 ? "1px solid #E7E5E4" : "none",
-                  }}
-                >
-                  <div className="flex items-center justify-between mb-2">
-                    <div
-                      className="font-sans text-[14px]"
-                      style={{ color: "#1C1917", fontWeight: 500 }}
-                    >
-                      {r.author}
-                    </div>
-                    <Rating value={r.rating} size={13} />
-                  </div>
-                  <p
-                    className="font-serif"
-                    style={{ color: "#1C1917", fontSize: 17, lineHeight: 1.55 }}
+              {b.reviewList.length > 0 ? (
+                b.reviewList.map((r, i) => (
+                  <div
+                    key={i}
+                    className="pb-6"
+                    style={{ borderBottom: i < b.reviewList.length - 1 ? "1px solid #E7E5E4" : "none" }}
                   >
-                    "{r.text}"
-                  </p>
+                    <div className="flex items-center justify-between mb-2">
+                      <div className="font-sans text-[14px]" style={{ color: "#1C1917", fontWeight: 500 }}>
+                        {r.author}
+                      </div>
+                      <Rating value={r.rating} size={13} />
+                    </div>
+                    <p className="font-serif" style={{ color: "#1C1917", fontSize: 17, lineHeight: 1.55 }}>
+                      "{r.text}"
+                    </p>
+                  </div>
+                ))
+              ) : (
+                <div className="py-10 text-center">
+                  <div className="font-serif italic" style={{ color: "#78716C", fontSize: 18 }}>
+                    {b.reviews.toLocaleString()} reviews on Yelp
+                  </div>
+                  <div className="font-sans text-[12px] mt-2" style={{ color: "#A8A29E" }}>
+                    Review text is not loaded at runtime — only aggregated ratings are available.
+                  </div>
                 </div>
-              ))}
+              )}
             </div>
           )}
 
-          {(tab === "Photos" || tab === "Menu" || tab === "About") && (
-            <div className="font-serif italic" style={{ color: "#78716C", fontSize: 16 }}>
-              {tab} content — illustrative placeholder.
+          {tab === "Photos" && (
+            <div>
+              {b.gallery.length > 0 ? (
+                <div className="grid grid-cols-2 gap-3">
+                  {b.gallery.map((src, i) => (
+                    <div
+                      key={i}
+                      className="rounded-xl overflow-hidden cursor-pointer aspect-[4/3] group"
+                      onClick={() => setLightboxIdx(i)}
+                    >
+                      <img
+                        src={src}
+                        alt=""
+                        className="w-full h-full object-cover transition-transform duration-200 group-hover:scale-[1.03]"
+                      />
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="py-10 text-center">
+                  <div className="font-serif italic" style={{ color: "#78716C", fontSize: 18 }}>
+                    No photos available for this location.
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {tab === "About" && (
+            <div className="space-y-6">
+              <div>
+                <h3 className="font-serif mb-3" style={{ color: "#1C1917", fontSize: 20, fontWeight: 500 }}>
+                  Location
+                </h3>
+                <div className="space-y-2 font-sans text-[14px]" style={{ color: "#1C1917" }}>
+                  {b.address && (
+                    <div className="flex gap-3">
+                      <span style={{ color: "#78716C", minWidth: 90 }}>Address</span>
+                      <span>{b.address}</span>
+                    </div>
+                  )}
+                  <div className="flex gap-3">
+                    <span style={{ color: "#78716C", minWidth: 90 }}>Neighborhood</span>
+                    <span>{b.neighborhood}</span>
+                  </div>
+                  <div className="flex gap-3">
+                    <span style={{ color: "#78716C", minWidth: 90 }}>City</span>
+                    <span>{b.city}</span>
+                  </div>
+                  {b.hours && (
+                    <div className="flex gap-3">
+                      <span style={{ color: "#78716C", minWidth: 90 }}>Hours</span>
+                      <span>{b.hours}</span>
+                    </div>
+                  )}
+                  <div className="flex gap-3">
+                    <span style={{ color: "#78716C", minWidth: 90 }}>Price range</span>
+                    <span>{b.price}</span>
+                  </div>
+                </div>
+              </div>
+              <div>
+                <h3 className="font-serif mb-3" style={{ color: "#1C1917", fontSize: 20, fontWeight: 500 }}>
+                  Categories
+                </h3>
+                <div className="flex flex-wrap gap-2">
+                  {b.tags.map((tag) => (
+                    <span
+                      key={tag}
+                      className="font-sans text-[12px] px-3 py-1.5 rounded-full"
+                      style={{ color: "#1C1917", background: "#FAF6F0", border: "1px solid #E7E5E4" }}
+                    >
+                      {tag.replace(/-/g, " ")}
+                    </span>
+                  ))}
+                </div>
+              </div>
+              <div>
+                <h3 className="font-serif mb-3" style={{ color: "#1C1917", fontSize: 20, fontWeight: 500 }}>
+                  Rating
+                </h3>
+                <div className="flex items-center gap-4">
+                  <span className="font-serif" style={{ fontSize: 48, color: "#1C1917", lineHeight: 1 }}>
+                    {b.rating.toFixed(1)}
+                  </span>
+                  <div>
+                    <Rating value={b.rating} size={16} />
+                    <div className="font-sans text-[12px] mt-1" style={{ color: "#78716C" }}>
+                      Based on {b.reviews.toLocaleString()} reviews
+                    </div>
+                  </div>
+                </div>
+              </div>
             </div>
           )}
         </div>
