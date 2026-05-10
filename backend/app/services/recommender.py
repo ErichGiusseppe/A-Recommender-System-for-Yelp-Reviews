@@ -37,6 +37,10 @@ _model_version: str = "mock-0.1.0"
 _loaded_from_parquet: bool = False
 _content_model_ok: bool = False
 
+# SVD++ model loaded at runtime for folding-in
+_svdpp_model = None
+_svdpp_ok: bool = False
+
 
 # ── Mock fallback ───────────────────────────────────────────────────────────
 
@@ -191,11 +195,120 @@ def _load_content_model() -> None:
         logger.warning("Error loading content_model.joblib (%s)", exc)
 
 
+# ── SVD++ runtime loader (for folding-in) ──────────────────────────────────
+
+def _load_svdpp_model() -> None:
+    global _svdpp_model, _svdpp_ok
+
+    model_path = DATA_DIR / "models" / "model_SVDpp_100.joblib"
+    if not model_path.exists():
+        logger.info("SVD++ model not found at %s — folding-in disabled", model_path)
+        return
+
+    try:
+        import joblib  # type: ignore
+        _svdpp_model = joblib.load(model_path)
+        _svdpp_ok = True
+        ts = _svdpp_model.trainset
+        logger.info(
+            "SVD++ model loaded for folding-in: %d users, %d items",
+            ts.n_users, ts.n_items,
+        )
+    except Exception as exc:
+        logger.warning("SVD++ model load failed (%s) — folding-in disabled", exc)
+
+
+# ── Folding-in (Brand 2006) ─────────────────────────────────────────────────
+
+def _folding_in(
+    raw_uid: str,
+    user_ratings: dict[str, float],
+) -> "tuple[np.ndarray, float] | None":
+    """
+    Compute updated user latent vector given new ratings, keeping Q fixed.
+
+    Returns (p_u_new, bu) or None if the model is unavailable or there are
+    too few ratings to solve the system.
+
+    Math:
+      residual r_i = stars_i - mu - bu - bi - qi · u_impl
+      Solve: argmin ||Q p_u - r||^2  via np.linalg.lstsq
+    """
+    if not _svdpp_ok or _svdpp_model is None or not user_ratings:
+        return None
+
+    ts = _svdpp_model.trainset
+    mu = ts.global_mean
+
+    rated: list[tuple[int, float, float]] = []
+    for bid, stars in user_ratings.items():
+        try:
+            i  = ts.to_inner_iid(bid)
+            bi = float(_svdpp_model.bi[i])
+            rated.append((i, float(stars), bi))
+        except ValueError:
+            pass
+
+    if not rated:
+        return None
+
+    try:
+        u  = ts.to_inner_uid(raw_uid)
+        bu = float(_svdpp_model.bu[u])
+        seen = ts.ur[u]
+        u_impl = (
+            _svdpp_model.yj[[iid for iid, _ in seen]].sum(axis=0) / np.sqrt(len(seen))
+            if seen else np.zeros(_svdpp_model.n_factors)
+        )
+    except ValueError:
+        bu     = 0.0
+        u_impl = np.zeros(_svdpp_model.n_factors)
+
+    Q = np.array([_svdpp_model.qi[i] for i, _, _  in rated], dtype=np.float64)
+    r = np.array(
+        [
+            stars - mu - bu - bi - float(np.dot(_svdpp_model.qi[i], u_impl))
+            for i, stars, bi in rated
+        ],
+        dtype=np.float64,
+    )
+
+    p_u_new, _, _, _ = np.linalg.lstsq(Q, r, rcond=None)
+    return p_u_new.astype(np.float32), bu
+
+
+def _svdpp_batch_pu(
+    p_u: np.ndarray,
+    bu: float,
+    raw_iids: list[str],
+) -> np.ndarray:
+    """Score a list of business_ids using a provided p_u (e.g. folded-in)."""
+    if not _svdpp_ok or _svdpp_model is None:
+        return np.zeros(len(raw_iids))
+
+    ts = _svdpp_model.trainset
+    n  = len(raw_iids)
+    qi = np.zeros((n, _svdpp_model.n_factors), dtype=np.float32)
+    bi = np.zeros(n, dtype=np.float32)
+
+    for k, raw_iid in enumerate(raw_iids):
+        try:
+            i     = ts.to_inner_iid(raw_iid)
+            qi[k] = _svdpp_model.qi[i]
+            bi[k] = float(_svdpp_model.bi[i])
+        except ValueError:
+            pass
+
+    scores = ts.global_mean + bu + bi + (qi @ p_u)
+    return np.clip(scores, 1.0, 5.0)
+
+
 # ── Public API ──────────────────────────────────────────────────────────────
 
 def startup() -> None:
     _load_parquets()
     _load_content_model()
+    _load_svdpp_model()
 
 
 def is_real_model() -> bool:
@@ -288,8 +401,14 @@ def inject_scores(
     user_id: str,
     city: str | None = None,
     hour: int | None = None,
+    user_ratings: "dict[str, float] | None" = None,
 ) -> list[dict]:
-    """Attach match/cf/ctx/pop and apply contextual re-ranking by time of day."""
+    """Attach match/cf/ctx/pop and apply contextual re-ranking by time of day.
+
+    When user_ratings is provided (stars keyed by business_id), folding-in is
+    attempted to personalise scores without retraining the model. Rated businesses
+    are excluded from the result.
+    """
     from .contextual_scorer import contextual_rerank
 
     is_guest = user_id in ("new_visitor", "default") or not user_id
@@ -311,16 +430,39 @@ def inject_scores(
     else:
         recs_by_id = city_fallback
 
+    rated_ids: set[str] = set(user_ratings.keys()) if user_ratings else set()
+
+    # Folding-in: re-score with updated latent vector derived from new ratings
+    folded: "dict[str, float] | None" = None
+    if user_ratings and not is_guest:
+        fi = _folding_in(user_id, user_ratings)
+        if fi is not None:
+            p_u_new, bu = fi
+            unrated_ids = [b["id"] for b in businesses if b["id"] not in rated_ids]
+            raw_scores  = _svdpp_batch_pu(p_u_new, bu, unrated_ids)
+            # Normalise [1,5] → [0,1]
+            norm   = (raw_scores - 1.0) / 4.0
+            folded = dict(zip(unrated_ids, norm.tolist()))
+
     result = []
     for b in businesses:
+        if b["id"] in rated_ids:
+            continue
         biz = dict(b)
-        # Personal SVD++ score first; fall back to city cold-start if not covered
-        rec = recs_by_id.get(biz["id"]) or city_fallback.get(biz["id"])
-        if rec:
-            biz["match"] = rec["match"]
-            biz["cf"]    = rec["cf"]
-            biz["ctx"]   = rec["ctx"]
-            biz["pop"]   = rec["pop"]
+        if folded is not None:
+            score        = folded.get(biz["id"], 0.0)
+            match        = min(99, max(1, int(round(score * 100))))
+            biz["match"] = match
+            biz["cf"]    = match
+            biz["ctx"]   = 0
+            biz["pop"]   = 0
+        else:
+            rec = recs_by_id.get(biz["id"]) or city_fallback.get(biz["id"])
+            if rec:
+                biz["match"] = rec["match"]
+                biz["cf"]    = rec["cf"]
+                biz["ctx"]   = rec["ctx"]
+                biz["pop"]   = rec["pop"]
         result.append(biz)
 
     # Post-filter: contextual re-ranking by hour (O(n), instant)

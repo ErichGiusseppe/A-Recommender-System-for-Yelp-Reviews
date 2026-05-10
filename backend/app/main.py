@@ -5,7 +5,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from app.models import HealthResponse
-from app.routers import businesses, users, recommendations, search, auth_router
+from app.routers import businesses, users, recommendations, search, auth_router, reviews
 from app.services import recommender, business_store
 
 _PHOTOS_DIR = Path(__file__).parent.parent / "data" / "real" / "photos" / "photos"
@@ -46,6 +46,7 @@ app.include_router(businesses.router, tags=["businesses"])
 app.include_router(users.router, tags=["users"])
 app.include_router(recommendations.router, tags=["recommendations"])
 app.include_router(search.router, tags=["search"])
+app.include_router(reviews.router)
 
 if _PHOTOS_DIR.exists():
     app.mount("/photos", StaticFiles(directory=str(_PHOTOS_DIR)), name="photos")

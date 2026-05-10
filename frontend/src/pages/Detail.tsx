@@ -3,6 +3,129 @@ import { useParams, useNavigate } from "react-router-dom";
 import { useBusiness } from "../hooks/useApi";
 import Rating from "../components/ui/Rating";
 import ExplanationCard from "../components/ExplanationCard";
+import { api } from "../lib/api";
+
+function StarPicker({
+  value,
+  onChange,
+}: {
+  value: number;
+  onChange: (v: number) => void;
+}) {
+  const [hovered, setHovered] = useState(0);
+  return (
+    <div className="flex gap-1">
+      {[1, 2, 3, 4, 5].map((s) => {
+        const filled = s <= (hovered || value);
+        return (
+          <button
+            key={s}
+            type="button"
+            onMouseEnter={() => setHovered(s)}
+            onMouseLeave={() => setHovered(0)}
+            onClick={() => onChange(s)}
+            className="transition-transform hover:scale-110 active:scale-95"
+            style={{ background: "none", border: "none", padding: 2, cursor: "pointer" }}
+          >
+            <svg
+              width="24"
+              height="24"
+              viewBox="0 0 24 24"
+              fill={filled ? "#C2410C" : "none"}
+              stroke={filled ? "#C2410C" : "#A8A29E"}
+              strokeWidth="1.6"
+            >
+              <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
+            </svg>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+function RateSection({ businessId }: { businessId: string }) {
+  const storedUser = localStorage.getItem("lantern_user");
+  const isLoggedIn = !!localStorage.getItem("lantern_token") && !!storedUser;
+
+  const [stars, setStars] = useState(0);
+  const [text, setText] = useState("");
+  const [submitted, setSubmitted] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+
+  if (!isLoggedIn) return null;
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (stars === 0) { setError("Please select a star rating."); return; }
+    setLoading(true);
+    setError("");
+    try {
+      await api.submitReview({ business_id: businessId, stars, text });
+      setSubmitted(true);
+    } catch {
+      setError("Could not save your review. Please try again.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  if (submitted) {
+    return (
+      <div
+        className="rounded-xl p-5"
+        style={{ background: "#FAF6F0", border: "1px solid #E7E5E4" }}
+      >
+        <div className="font-sans text-[13px]" style={{ color: "#1C1917" }}>
+          Thanks — your rating was saved. Recommendations will update on your next visit.
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div
+      className="rounded-xl p-5"
+      style={{ background: "#FAF6F0", border: "1px solid #E7E5E4" }}
+    >
+      <h3
+        className="font-serif mb-4"
+        style={{ color: "#1C1917", fontSize: 20, fontWeight: 500 }}
+      >
+        Rate this place
+      </h3>
+      <form onSubmit={handleSubmit} className="space-y-4">
+        <StarPicker value={stars} onChange={setStars} />
+        <textarea
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          placeholder="Share your experience (optional)"
+          rows={3}
+          className="w-full font-sans text-[13px] rounded-lg px-3 py-2.5 resize-none focus:outline-none"
+          style={{
+            background: "#FFFFFF",
+            border: "1px solid #E7E5E4",
+            color: "#1C1917",
+          }}
+        />
+        {error && (
+          <p className="font-sans text-[12px]" style={{ color: "#C2410C" }}>
+            {error}
+          </p>
+        )}
+        <button
+          type="submit"
+          disabled={loading}
+          className="font-sans text-[13px] font-medium px-5 py-2.5 rounded-full transition-all hover:-translate-y-[2px] disabled:opacity-50"
+          style={{ background: "#C2410C", color: "white" }}
+        >
+          {loading ? "Saving…" : "Submit rating"}
+        </button>
+      </form>
+    </div>
+  );
+}
 
 const TABS = ["Overview", "Reviews", "Photos", "About"] as const;
 type Tab = (typeof TABS)[number];
@@ -306,6 +429,7 @@ export default function Detail() {
 
           {tab === "Overview" && (
             <div className="space-y-8">
+              <RateSection businessId={b.id} />
               <div>
                 <p
                   className="font-serif"

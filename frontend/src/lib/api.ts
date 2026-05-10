@@ -41,6 +41,19 @@ async function post<T>(path: string, body: unknown): Promise<T> {
   return res.json() as Promise<T>;
 }
 
+export interface ReviewSubmit {
+  business_id: string;
+  stars: number;
+  text?: string;
+}
+
+export interface ReviewOut {
+  business_id: string;
+  stars: number;
+  text: string;
+  created_at: string;
+}
+
 export interface PaginatedBusinesses {
   items: Business[];
   total: number;
@@ -148,4 +161,9 @@ export const api = {
     if (params.limit)    qs.set("limit",    String(params.limit));
     return get<{ items: Business[]; total: number }>(`/search?${qs}`);
   },
+
+  submitReview: (data: ReviewSubmit) =>
+    post<ReviewOut>("/reviews", data),
+
+  myReviews: () => get<ReviewOut[]>("/reviews/me"),
 };

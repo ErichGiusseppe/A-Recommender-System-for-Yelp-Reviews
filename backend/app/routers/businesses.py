@@ -4,6 +4,7 @@ from fastapi import APIRouter, HTTPException, Query, Depends
 from app.models import BusinessModel, BusinessCreate, CategoryModel, PaginatedBusinesses
 from app.services import business_store, recommender
 from app.auth import get_current_user, require_auth
+from app.database import get_conn
 import json
 from pathlib import Path
 
@@ -18,6 +19,15 @@ def _load_mock_categories() -> list[dict]:
         return json.load(f)
 
 
+def _load_user_ratings(user_id: str) -> dict[str, float]:
+    """Return {business_id: stars} for all reviews the user has submitted."""
+    with get_conn() as conn:
+        rows = conn.execute(
+            "SELECT business_id, stars FROM reviews WHERE user_id=?", (user_id,)
+        ).fetchall()
+    return {r["business_id"]: float(r["stars"]) for r in rows}
+
+
 @router.get("/businesses", response_model=PaginatedBusinesses)
 def list_businesses(
     city: str | None = None,
@@ -29,9 +39,15 @@ def list_businesses(
     items = business_store.get_businesses()
     if city:
         items = [b for b in items if b["city"].lower() == city.lower()]
-    # Inject scores + contextual re-ranking by current hour
+
+    user_ratings = (
+        _load_user_ratings(user_id) if not current_user.is_guest else None
+    )
+
     hour = datetime.now().hour
-    all_scored = recommender.inject_scores(items, user_id, city=city, hour=hour)
+    all_scored = recommender.inject_scores(
+        items, user_id, city=city, hour=hour, user_ratings=user_ratings
+    )
     total = len(all_scored)
     return {"items": all_scored[offset: offset + limit], "total": total}
 

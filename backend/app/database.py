@@ -48,4 +48,14 @@ def init_db() -> None:
                 created_at  TEXT NOT NULL
             )
         """)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS reviews (
+                user_id     TEXT NOT NULL,
+                business_id TEXT NOT NULL,
+                stars       INTEGER NOT NULL,
+                text        TEXT NOT NULL DEFAULT '',
+                created_at  TEXT NOT NULL,
+                PRIMARY KEY (user_id, business_id)
+            )
+        """)
         conn.commit()
