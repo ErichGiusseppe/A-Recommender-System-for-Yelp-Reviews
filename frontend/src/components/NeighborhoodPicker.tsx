@@ -19,7 +19,7 @@ interface NeighborhoodPickerProps {
 export default function NeighborhoodPicker({ onClose }: NeighborhoodPickerProps) {
   const { city, neighborhood, setCity, setNeighborhood } = useNeighborhood();
 
-  const [step, setStep]       = useState<"city" | "hood">(city ? "city" : "city");
+  const [step, setStep]       = useState<"city" | "hood">("city");
   const [selCity, setSelCity] = useState(city || "Philadelphia");
   const [selHood, setSelHood] = useState(neighborhood || "");
 

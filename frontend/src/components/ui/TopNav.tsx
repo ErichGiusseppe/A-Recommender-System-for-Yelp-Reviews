@@ -14,6 +14,10 @@ const DEMO_ACCOUNTS = [
   { username: "camila", label: "Camila Restrepo" },
   { username: "daniel", label: "Daniel Park" },
   { username: "sara",   label: "Sara Gómez" },
+  { username: "alex",   label: "Alex Kim" },
+  { username: "maria",  label: "María Torres" },
+  { username: "carlos", label: "Carlos Méndez" },
+  { username: "sofia",  label: "Sofía Leal" },
 ];
 
 export default function TopNav() {
@@ -159,7 +163,7 @@ export default function TopNav() {
                       >
                         Switch account
                       </div>
-                      {DEMO_ACCOUNTS.filter(a => a.username !== user?.user_id).map(({ username, label }) => (
+                      {DEMO_ACCOUNTS.filter(a => a.label !== user?.name).map(({ username, label }) => (
                         <button
                           key={username}
                           onClick={() => switchTo(username)}

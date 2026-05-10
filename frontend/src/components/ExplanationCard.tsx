@@ -11,7 +11,7 @@ export default function ExplanationCard({ b }: ExplanationCardProps) {
   const navigate = useNavigate();
   const [feedback, setFeedback] = useState<"up" | "down" | null>(null);
 
-  const total = b.cf + b.ctx + b.pop;
+  const total = b.cf + b.ctx + b.pop || 1;
   const cfPct = (b.cf / total) * 100;
   const ctxPct = (b.ctx / total) * 100;
   const popPct = (b.pop / total) * 100;

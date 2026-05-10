@@ -3,6 +3,7 @@ import { api } from "../lib/api";
 import type { Business, Category, User } from "../types";
 import { BUSINESSES, CATEGORIES, USER } from "../data/mock";
 import { useNeighborhood } from "../contexts/NeighborhoodContext";
+import { useAuth } from "../contexts/AuthContext";
 
 function useApiCall<T>(
   fetcher: () => Promise<T>,
@@ -29,10 +30,11 @@ function useApiCall<T>(
 
 export function useBusinesses() {
   const { city } = useNeighborhood();
+  const { token } = useAuth();
   return useApiCall<Business[]>(
     () => api.businesses({ city: city || undefined, limit: 50 }).then((r) => r.items),
     BUSINESSES,
-    [city]
+    [city, token]
   );
 }
 
@@ -49,7 +51,8 @@ export function useCategories() {
 }
 
 export function useMe() {
-  return useApiCall<User>(() => api.me(), USER);
+  const { token } = useAuth();
+  return useApiCall<User>(() => api.me(), USER, [token]);
 }
 
 export function useSavedBusinesses(ids: string[]) {

@@ -253,9 +253,11 @@ export default function Detail() {
             <span className="font-sans text-[13px]" style={{ color: "#1C1917" }}>
               Open now
             </span>
-            <span className="font-sans text-[13px]" style={{ color: "#78716C" }}>
-              · closes {b.hours.split(" – ")[1]}
-            </span>
+            {b.hours && (
+              <span className="font-sans text-[13px]" style={{ color: "#78716C" }}>
+                · closes {b.hours.split(" – ")[1]}
+              </span>
+            )}
           </div>
         </div>
         <div className="sm:col-span-4 flex items-end justify-start sm:justify-end gap-2 flex-wrap">
