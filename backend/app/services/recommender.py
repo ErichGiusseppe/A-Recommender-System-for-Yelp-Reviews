@@ -283,21 +283,29 @@ def get_cold_start_recommendations(
         return get_recommendations("new_visitor", limit)
 
 
-def inject_scores(businesses: list[dict], user_id: str, city: str | None = None) -> list[dict]:
-    """Attach match/cf/ctx/pop from recommender into a list of business dicts."""
-    # City-scoped cold-start base (ensures every city gets scored businesses)
-    if city:
-        city_key = f"new_visitor|{city}"
-        city_recs = _top_n.get(city_key) or _top_n.get("new_visitor") or []
+def inject_scores(
+    businesses: list[dict],
+    user_id: str,
+    city: str | None = None,
+    hour: int | None = None,
+) -> list[dict]:
+    """Attach match/cf/ctx/pop and apply contextual re-ranking by time of day."""
+    from .contextual_scorer import contextual_rerank
+
+    is_guest = user_id in ("new_visitor", "default") or not user_id
+    personal_recs = [] if is_guest else _top_n.get(user_id, [])
+
+    if personal_recs:
+        # Warm user: use SVD++ personal recs only — don't dilute with cold-start
+        recs_by_id: dict = {r["business_id"]: r for r in personal_recs}
     else:
-        city_recs = _top_n.get("new_visitor") or []
-
-    # Personal recs override city base where available
-    personal_recs = _top_n.get(user_id, [])
-
-    recs_by_id: dict = {r["business_id"]: r for r in city_recs}
-    for r in personal_recs:
-        recs_by_id[r["business_id"]] = r  # personal scores take priority
+        # Guest / cold-start: use city-specific or global profile
+        if city:
+            city_key = f"new_visitor|{city}"
+            fallback = _top_n.get(city_key) or _top_n.get("new_visitor") or []
+        else:
+            fallback = _top_n.get("new_visitor") or []
+        recs_by_id = {r["business_id"]: r for r in fallback}
 
     result = []
     for b in businesses:
@@ -309,4 +317,9 @@ def inject_scores(businesses: list[dict], user_id: str, city: str | None = None)
             biz["ctx"]   = rec["ctx"]
             biz["pop"]   = rec["pop"]
         result.append(biz)
+
+    # Post-filter: contextual re-ranking by hour (O(n), instant)
+    if hour is not None:
+        result = contextual_rerank(result, hour=hour)
+
     return result

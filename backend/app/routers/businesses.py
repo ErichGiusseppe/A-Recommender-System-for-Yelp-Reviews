@@ -1,3 +1,4 @@
+from datetime import datetime
 from types import SimpleNamespace
 from fastapi import APIRouter, HTTPException, Query, Depends
 from app.models import BusinessModel, CategoryModel, PaginatedBusinesses
@@ -31,9 +32,9 @@ def list_businesses(
     items = business_store.get_businesses()
     if city:
         items = [b for b in items if b["city"].lower() == city.lower()]
-    # Inject scores then sort: best match first, then by rating
-    all_scored = recommender.inject_scores(items, user_id, city=city)
-    all_scored.sort(key=lambda b: (-b["match"], -b["rating"]))
+    # Inject scores + contextual re-ranking by current hour
+    hour = datetime.now().hour
+    all_scored = recommender.inject_scores(items, user_id, city=city, hour=hour)
     total = len(all_scored)
     return {"items": all_scored[offset: offset + limit], "total": total}
 
