@@ -111,13 +111,14 @@ export const api = {
   createBusiness: (data: BusinessCreatePayload) =>
     post<import("../types").Business>("/businesses", data),
 
-  coldStartRecs: (params: { categories: string; stars: number; price: number; limit?: number }) => {
+  coldStartRecs: (params: { categories: string; stars: number; price: number; limit?: number; city?: string }) => {
     const qs = new URLSearchParams({
       categories: params.categories,
       stars:      String(params.stars),
       price:      String(params.price),
       limit:      String(params.limit ?? 20),
     });
+    if (params.city) qs.set("city", params.city);
     return get<RecommendationsResponse>(`/recommendations/cold-start?${qs}`);
   },
 

@@ -355,16 +355,14 @@ def get_explanation(user_id: str, business_id: str) -> Optional[dict]:
     return None
 
 
-def get_cold_start_recommendations(
+def _content_scores(
     categories: str,
-    price_pref: int = 2,
-    stars_pref: float = 0.8,
-    limit: int = 50,
-) -> list[dict]:
-    """Dynamic cold-start using the content model (requires content_model.joblib)."""
+    price_pref: int,
+    stars_pref: float,
+) -> "tuple[np.ndarray, np.ndarray] | None":
+    """Compute (scores, sims) over _biz_ids_cb. Returns None if model unavailable."""
     if not _content_model_ok or _tfidf is None or _feature_mat is None:
-        return get_recommendations("new_visitor", limit)
-
+        return None
     try:
         import scipy.sparse as sp  # type: ignore
         from sklearn.metrics.pairwise import cosine_similarity as cos_sim  # type: ignore
@@ -375,25 +373,76 @@ def get_cold_start_recommendations(
         price_oh[0, max(0, min(3, price_pref - 1))] = 1.0
         query    = sp.hstack([tfidf_q, num_q, sp.csr_matrix(price_oh)])
 
-        sims     = cos_sim(query, _feature_mat).flatten()
-        pop      = np.array([_biz_pop_cb.get(b, 0.0) for b in _biz_ids_cb])
-        scores   = 0.75 * sims + 0.25 * pop
-
-        top_idx  = np.argsort(scores)[::-1][:limit]
-        return [
-            {
-                "business_id": _biz_ids_cb[i],
-                "score":       round(float(scores[i]), 4),
-                "match":       min(99, max(1, int(round(float(scores[i]) * 100)))),
-                "cf":          0,
-                "ctx":         round(float(sims[i]) * 100),
-                "pop":         round(float(pop[i]) * 100),
-            }
-            for i in top_idx
-        ]
+        sims   = cos_sim(query, _feature_mat).flatten()
+        pop    = np.array([_biz_pop_cb.get(b, 0.0) for b in _biz_ids_cb])
+        scores = 0.75 * sims + 0.25 * pop
+        return scores, sims
     except Exception as exc:
-        logger.warning("Dynamic cold-start failed (%s) — falling back to pre-computed", exc)
+        logger.warning("Content model scoring failed (%s)", exc)
+        return None
+
+
+def get_cold_start_recommendations(
+    categories: str,
+    price_pref: int = 2,
+    stars_pref: float = 0.8,
+    limit: int = 50,
+    city: str | None = None,
+) -> list[dict]:
+    """Dynamic cold-start using the content model (requires content_model.joblib)."""
+    result = _content_scores(categories, price_pref, stars_pref)
+    if result is None:
         return get_recommendations("new_visitor", limit)
+
+    scores, sims = result
+    pop = np.array([_biz_pop_cb.get(b, 0.0) for b in _biz_ids_cb])
+
+    if city:
+        city_mask = np.array([_biz_city.get(b, "") == city for b in _biz_ids_cb])
+        filtered  = scores * city_mask
+        top_idx   = np.argsort(filtered)[::-1][:limit]
+        # If city has no coverage in content model, fall back to global ranking
+        if not city_mask.any():
+            top_idx = np.argsort(scores)[::-1][:limit]
+    else:
+        top_idx = np.argsort(scores)[::-1][:limit]
+
+    return [
+        {
+            "business_id": _biz_ids_cb[i],
+            "score":       round(float(scores[i]), 4),
+            "match":       min(99, max(1, int(round(float(scores[i]) * 100)))),
+            "cf":          0,
+            "ctx":         round(float(sims[i]) * 100),
+            "pop":         round(float(pop[i]) * 100),
+        }
+        for i in top_idx
+    ]
+
+
+def get_cold_start_scores(
+    categories: str,
+    price_pref: int = 2,
+    stars_pref: float = 0.8,
+    city: str | None = None,
+) -> "dict[str, float]":
+    """
+    Return {business_id: normalized_score [0,1]} for use in inject_scores().
+
+    Only includes businesses in `city` when city is provided. Used to rank
+    the main listing for new users who completed the cold-start wizard.
+    """
+    result = _content_scores(categories, price_pref, stars_pref)
+    if result is None:
+        return {}
+
+    scores, _ = result
+    out: dict[str, float] = {}
+    for i, bid in enumerate(_biz_ids_cb):
+        if city and _biz_city.get(bid) != city:
+            continue
+        out[bid] = float(scores[i])
+    return out
 
 
 def inject_scores(
@@ -402,20 +451,22 @@ def inject_scores(
     city: str | None = None,
     hour: int | None = None,
     user_ratings: "dict[str, float] | None" = None,
+    cold_start_scores: "dict[str, float] | None" = None,
 ) -> list[dict]:
     """Attach match/cf/ctx/pop and apply contextual re-ranking by time of day.
 
-    When user_ratings is provided (stars keyed by business_id), folding-in is
-    attempted to personalise scores without retraining the model. Rated businesses
-    are excluded from the result.
+    Score priority (highest → lowest):
+      1. Folding-in  — warm user with new ratings (real-time SVD++ update)
+      2. Personal    — pre-computed SVD++ top-N from parquet
+      3. Cold-start  — content model scores for new users with wizard profile
+      4. Popularity  — pre-computed new_visitor|city fallback
     """
     from .contextual_scorer import contextual_rerank
 
     is_guest = user_id in ("new_visitor", "default") or not user_id
     personal_recs = [] if is_guest else _top_n.get(user_id, [])
 
-    # City cold-start fallback — used when personal recs don't cover the city
-    city_key     = f"new_visitor|{city}" if city else None
+    city_key      = f"new_visitor|{city}" if city else None
     city_fallback: dict = {
         r["business_id"]: r
         for r in (
@@ -424,11 +475,7 @@ def inject_scores(
             or []
         )
     }
-
-    if personal_recs:
-        recs_by_id: dict = {r["business_id"]: r for r in personal_recs}
-    else:
-        recs_by_id = city_fallback
+    recs_by_id: dict = {r["business_id"]: r for r in personal_recs}
 
     rated_ids: set[str] = set(user_ratings.keys()) if user_ratings else set()
 
@@ -440,16 +487,17 @@ def inject_scores(
             p_u_new, bu = fi
             unrated_ids = [b["id"] for b in businesses if b["id"] not in rated_ids]
             raw_scores  = _svdpp_batch_pu(p_u_new, bu, unrated_ids)
-            # Normalise [1,5] → [0,1]
-            norm   = (raw_scores - 1.0) / 4.0
-            folded = dict(zip(unrated_ids, norm.tolist()))
+            norm        = (raw_scores - 1.0) / 4.0
+            folded      = dict(zip(unrated_ids, norm.tolist()))
 
     result = []
     for b in businesses:
         if b["id"] in rated_ids:
             continue
         biz = dict(b)
+
         if folded is not None:
+            # Priority 1: folding-in
             score        = folded.get(biz["id"], 0.0)
             match        = min(99, max(1, int(round(score * 100))))
             biz["match"] = match
@@ -457,15 +505,32 @@ def inject_scores(
             biz["ctx"]   = 0
             biz["pop"]   = 0
         else:
-            rec = recs_by_id.get(biz["id"]) or city_fallback.get(biz["id"])
+            rec = recs_by_id.get(biz["id"])
             if rec:
+                # Priority 2: personal SVD++ pre-computed
                 biz["match"] = rec["match"]
                 biz["cf"]    = rec["cf"]
                 biz["ctx"]   = rec["ctx"]
                 biz["pop"]   = rec["pop"]
+            elif cold_start_scores is not None and biz["id"] in cold_start_scores:
+                # Priority 3: content model cold-start (wizard profile)
+                score        = cold_start_scores[biz["id"]]
+                match        = min(99, max(1, int(round(score * 100))))
+                biz["match"] = match
+                biz["cf"]    = 0
+                biz["ctx"]   = match
+                biz["pop"]   = 0
+            else:
+                # Priority 4: popularity fallback
+                rec = city_fallback.get(biz["id"])
+                if rec:
+                    biz["match"] = rec["match"]
+                    biz["cf"]    = rec["cf"]
+                    biz["ctx"]   = rec["ctx"]
+                    biz["pop"]   = rec["pop"]
+
         result.append(biz)
 
-    # Post-filter: contextual re-ranking by hour (O(n), instant)
     if hour is not None:
         result = contextual_rerank(result, hour=hour)
 

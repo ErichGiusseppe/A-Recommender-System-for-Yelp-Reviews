@@ -46,13 +46,14 @@ def get_recommendations(
 
 @router.get("/recommendations/cold-start", response_model=RecommendationsResponse)
 def get_cold_start(
-    categories: str = Query("Restaurants Food"),
+    categories: str = Query("Restaurants, Food"),
     price: int = Query(2, ge=1, le=4),
     stars: float = Query(0.8, ge=0.0, le=1.0),
     limit: int = Query(20, ge=1, le=50),
+    city: str | None = Query(None),
 ):
     recs = recommender.get_cold_start_recommendations(
-        categories=categories, price_pref=price, stars_pref=stars, limit=limit,
+        categories=categories, price_pref=price, stars_pref=stars, limit=limit, city=city,
     )
     items = [
         RecommendationModel(

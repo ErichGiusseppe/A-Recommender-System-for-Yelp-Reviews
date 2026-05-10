@@ -74,7 +74,7 @@ export default function Discovery() {
     setColdLoading(true);
     try {
       const params = profileToParams(p);
-      const resp   = await api.coldStartRecs({ ...params, limit: 20 });
+      const resp   = await api.coldStartRecs({ ...params, limit: 20, city: city || undefined });
       // Fetch full business details in parallel for the top 8 results
       const top8   = resp.items.slice(0, 8);
       const results = await Promise.all(
@@ -96,7 +96,7 @@ export default function Discovery() {
     } finally {
       setColdLoading(false);
     }
-  }, []);
+  }, [city]);
 
   useEffect(() => {
     if (profile) fetchColdStart(profile);
