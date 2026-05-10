@@ -48,7 +48,7 @@ export default function Search() {
               fontWeight: 400,
             }}
           >
-            "<em style={{ fontStyle: "italic" }}>cozy dinner, walking distance</em>"
+            "<em style={{ fontStyle: "italic" }}>coffee with wifi, live music tonight</em>"
           </h1>
           <div className="font-sans text-[12px] sm:pb-2" style={{ color: "#78716C" }}>
             <span className="tabular-nums" style={{ color: "#1C1917", fontWeight: 500 }}>

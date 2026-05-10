@@ -65,8 +65,48 @@ export interface DemoAccount {
   avatar: string;
 }
 
+export interface RegisterPayload {
+  username: string;
+  password: string;
+  name: string;
+}
+
+export interface AuthResponse {
+  access_token: string;
+  token_type: string;
+  user: { user_id: string; name: string };
+}
+
+export interface BusinessCreatePayload {
+  name: string;
+  category: string;
+  city: string;
+  neighborhood: string;
+  address: string;
+  price: string;
+  rating: number;
+  lat?: number;
+  lng?: number;
+}
+
 export const api = {
   health: () => get<{ status: string }>("/health"),
+
+  register: (data: RegisterPayload) =>
+    post<AuthResponse>("/auth/register", data),
+
+  createBusiness: (data: BusinessCreatePayload) =>
+    post<import("../types").Business>("/businesses", data),
+
+  coldStartRecs: (params: { categories: string; stars: number; price: number; limit?: number }) => {
+    const qs = new URLSearchParams({
+      categories: params.categories,
+      stars:      String(params.stars),
+      price:      String(params.price),
+      limit:      String(params.limit ?? 20),
+    });
+    return get<RecommendationsResponse>(`/recommendations/cold-start?${qs}`);
+  },
 
   businesses: (params?: { city?: string; limit?: number; offset?: number }) => {
     const qs = new URLSearchParams();
@@ -79,6 +119,8 @@ export const api = {
   business: (id: string) => get<Business>(`/businesses/${id}`),
 
   categories: () => get<Category[]>("/categories"),
+
+  cities: () => get<string[]>("/cities"),
 
   me: () => get<User>("/users/me"),
 

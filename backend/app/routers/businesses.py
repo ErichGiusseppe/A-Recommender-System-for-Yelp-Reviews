@@ -1,9 +1,9 @@
 from datetime import datetime
 from types import SimpleNamespace
 from fastapi import APIRouter, HTTPException, Query, Depends
-from app.models import BusinessModel, CategoryModel, PaginatedBusinesses
+from app.models import BusinessModel, BusinessCreate, CategoryModel, PaginatedBusinesses
 from app.services import business_store, recommender
-from app.auth import get_current_user
+from app.auth import get_current_user, require_auth
 import json
 from pathlib import Path
 
@@ -13,12 +13,9 @@ _MOCK_DIR = Path(__file__).parent.parent.parent / "data" / "mock"
 _categories_cache: list[dict] | None = None
 
 
-def _load_categories() -> list[dict]:
-    global _categories_cache
-    if _categories_cache is None:
-        with open(_MOCK_DIR / "categories.json", encoding="utf-8") as f:
-            _categories_cache = json.load(f)
-    return _categories_cache
+def _load_mock_categories() -> list[dict]:
+    with open(_MOCK_DIR / "categories.json", encoding="utf-8") as f:
+        return json.load(f)
 
 
 @router.get("/businesses", response_model=PaginatedBusinesses)
@@ -58,6 +55,30 @@ def get_business(
     return biz
 
 
+@router.post("/businesses", response_model=BusinessModel, status_code=201)
+def create_business(
+    data: BusinessCreate,
+    current_user: SimpleNamespace = Depends(require_auth),
+):
+    biz = business_store.add_business({
+        **data.model_dump(),
+        "created_by": current_user.user_id,
+    })
+    return biz
+
+
 @router.get("/categories", response_model=list[CategoryModel])
 def list_categories():
-    return _load_categories()
+    if business_store.is_real_data():
+        return business_store.get_categories_with_images(20)
+    return _load_mock_categories()
+
+
+@router.get("/cities", response_model=list[str])
+def list_cities():
+    cities = business_store.get_cities()
+    # Fallback to known cities if data not loaded yet
+    return cities or [
+        "Philadelphia", "Tucson", "Tampa", "Indianapolis", "Nashville",
+        "New Orleans", "Reno", "Edmonton", "Saint Louis", "Santa Barbara",
+    ]

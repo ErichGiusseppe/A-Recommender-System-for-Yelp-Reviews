@@ -114,3 +114,10 @@ export interface SeasonBar {
   label: string;
   value: number;
 }
+
+export interface ColdStartProfile {
+  moods:     string[];
+  occasion:  "traveling" | "local" | "date" | "quick";
+  timeSlot:  "morning" | "lunch" | "dinner" | "latenight";
+  price:     "$" | "$$" | "$$$" | "$$$$";
+}

@@ -1,6 +1,7 @@
 from fastapi import APIRouter, HTTPException, status, Depends
 from pydantic import BaseModel
-from app.auth import verify_user, create_access_token, get_demo_accounts, require_auth
+from app.auth import verify_user, create_access_token, get_demo_accounts, require_auth, register_user
+from app.models import UserRegister
 from types import SimpleNamespace
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -24,6 +25,22 @@ def login(body: LoginRequest):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid credentials",
+        )
+    token = create_access_token(result["user_id"], body.username)
+    return TokenResponse(
+        access_token=token,
+        token_type="bearer",
+        user={"user_id": result["user_id"], "name": result["name"]},
+    )
+
+
+@router.post("/register", response_model=TokenResponse, status_code=201)
+def register(body: UserRegister):
+    result = register_user(body.username, body.password, body.name)
+    if result is None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Username already taken",
         )
     token = create_access_token(result["user_id"], body.username)
     return TokenResponse(

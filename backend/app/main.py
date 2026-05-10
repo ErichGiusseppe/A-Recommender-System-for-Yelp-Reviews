@@ -15,6 +15,8 @@ _STARTED_AT = datetime.now(timezone.utc).isoformat()
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    from app.database import init_db
+    init_db()
     business_store.startup()
     recommender.startup()
     yield
