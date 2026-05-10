@@ -7,6 +7,13 @@ interface ExplanationCardProps {
   b: Business;
 }
 
+function dominantLabel(cf: number, ctx: number, pop: number): string {
+  if (cf >= ctx && cf >= pop && cf > 0) return "mostly your taste history";
+  if (ctx >= pop && ctx > 0)            return "mostly your stated preferences";
+  if (pop > 0)                          return "mostly what's trending here";
+  return "popular in this area";
+}
+
 export default function ExplanationCard({ b }: ExplanationCardProps) {
   const navigate = useNavigate();
   const [feedback, setFeedback] = useState<"up" | "down" | null>(null);
@@ -40,7 +47,7 @@ export default function ExplanationCard({ b }: ExplanationCardProps) {
             }}
           >
             <span className="tabular-nums">{b.match}%</span> for you,
-            <br /> mostly your taste history.
+            <br /> {dominantLabel(b.cf, b.ctx, b.pop)}.
           </div>
         </div>
       </div>

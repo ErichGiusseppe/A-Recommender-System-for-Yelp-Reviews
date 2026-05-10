@@ -66,18 +66,14 @@ def context_score_by_hour(tags: list[str], hour: int) -> float:
 
 def contextual_rerank(businesses: list[dict], hour: int) -> list[dict]:
     """
-    Re-score and re-sort businesses using time-of-day category boosts.
+    Re-sort businesses using time-of-day category boosts.
 
-    Multiplies each business's pre-computed match score by its hour boost,
-    then re-sorts descending. Match values stay in [1, 99].
+    The boost is used only for ranking order — match is kept at its model-computed
+    value so it stays consistent with cf/ctx/pop in the ExplanationCard.
     """
-    result = []
-    for b in businesses:
-        biz = dict(b)
-        tags = biz.get("tags") or []
+    def sort_key(b: dict) -> tuple:
+        tags  = b.get("tags") or []
         boost = context_score_by_hour(tags, hour)
-        base = biz.get("match", 50)
-        biz["match"] = min(99, max(1, round(base * boost)))
-        result.append(biz)
-    result.sort(key=lambda x: (-x["match"], -x.get("rating", 0)))
-    return result
+        return (-round(b.get("match", 50) * boost), -b.get("rating", 0))
+
+    return sorted(businesses, key=sort_key)
