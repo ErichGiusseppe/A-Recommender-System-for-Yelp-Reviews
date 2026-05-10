@@ -199,9 +199,92 @@ def _load_mock() -> None:
     logger.info("business_store: loaded %d businesses from mock", len(_businesses))
 
 
+def _load_local_businesses() -> None:
+    """Load user-created businesses from SQLite and merge into in-memory store."""
+    try:
+        from app.database import get_conn
+        with get_conn() as conn:
+            rows = conn.execute("SELECT * FROM local_businesses").fetchall()
+        count = 0
+        for row in rows:
+            biz = _row_to_biz({
+                "business_id": row["business_id"],
+                "name":        row["name"],
+                "categories":  row["category"],
+                "city":        row["city"],
+                "neighborhood": row["neighborhood"],
+                "address":     row["address"],
+                "stars":       row["rating"],
+                "review_count": 0,
+                "price_range": row["price_range"],
+                "latitude":    row["lat"],
+                "longitude":   row["lng"],
+            })
+            if biz["id"] not in _by_id:
+                _businesses.append(biz)
+                _by_id[biz["id"]] = biz
+                count += 1
+        logger.info("business_store: loaded %d local businesses from SQLite", count)
+    except Exception as exc:
+        logger.warning("Could not load local businesses from SQLite: %s", exc)
+
+
+def add_business(data: dict) -> dict:
+    """Insert a new business into SQLite and the in-memory store. Returns the full biz dict."""
+    import uuid
+    from datetime import datetime, timezone
+    from app.database import get_conn
+
+    price_map = {"$": 1, "$$": 2, "$$$": 3, "$$$$": 4}
+    price_range = price_map.get(data.get("price", "$$"), 2)
+    business_id = str(uuid.uuid4())
+    created_at = datetime.now(timezone.utc).isoformat()
+
+    with get_conn() as conn:
+        conn.execute(
+            """INSERT INTO local_businesses
+               (business_id, name, category, city, neighborhood, address,
+                rating, price_range, lat, lng, created_by, created_at)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""",
+            (
+                business_id,
+                data["name"],
+                data["category"],
+                data["city"],
+                data["neighborhood"],
+                data["address"],
+                data.get("rating", 0.0),
+                price_range,
+                data.get("lat", 39.9526),
+                data.get("lng", -75.1652),
+                data.get("created_by", "unknown"),
+                created_at,
+            ),
+        )
+        conn.commit()
+
+    biz = _row_to_biz({
+        "business_id": business_id,
+        "name":        data["name"],
+        "categories":  data["category"],
+        "city":        data["city"],
+        "neighborhood": data["neighborhood"],
+        "address":     data["address"],
+        "stars":       data.get("rating", 0.0),
+        "review_count": 0,
+        "price_range": price_range,
+        "latitude":    data.get("lat", 39.9526),
+        "longitude":   data.get("lng", -75.1652),
+    })
+    _businesses.append(biz)
+    _by_id[biz["id"]] = biz
+    return biz
+
+
 def startup() -> None:
     _load_photos()     # must run before _load_parquet so gallery URLs are ready
     _load_parquet()
+    _load_local_businesses()
 
 
 def is_real_data() -> bool:
@@ -214,6 +297,23 @@ def get_businesses() -> list[dict]:
 
 def get_business(business_id: str) -> Optional[dict]:
     return _by_id.get(business_id)
+
+
+def get_categories_with_images(n: int = 20) -> list[dict]:
+    """Top N categories by business count, with Unsplash cover images."""
+    from collections import Counter
+    counts: Counter = Counter(
+        biz["category"] for biz in _businesses if biz.get("category")
+    )
+    return [
+        {"name": cat, "img": _img(cat), "count": count}
+        for cat, count in counts.most_common(n)
+    ]
+
+
+def get_cities() -> list[str]:
+    """Sorted list of distinct cities present in loaded businesses."""
+    return sorted({biz["city"] for biz in _businesses if biz.get("city")})
 
 
 def search_businesses(

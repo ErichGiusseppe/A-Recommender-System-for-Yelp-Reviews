@@ -120,6 +120,21 @@ export default function TopNav() {
             </svg>
           </button>
 
+          {/* Add place (logged-in only) */}
+          {!isGuest && (
+            <button
+              onClick={() => navigate("/business/new")}
+              className="hidden sm:flex items-center gap-1.5 font-sans text-[13px] font-medium px-3 py-1.5 rounded-full transition-colors shrink-0"
+              style={{ background: "#C2410C", color: "#FFFFFF", border: "none" }}
+              title="Add a place"
+            >
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                <path d="M12 5v14M5 12h14" />
+              </svg>
+              Add
+            </button>
+          )}
+
           {/* Auth area */}
           {isGuest ? (
             <button

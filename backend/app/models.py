@@ -1,5 +1,5 @@
-from pydantic import BaseModel
-from typing import Optional
+from pydantic import BaseModel, field_validator
+from typing import Literal, Optional
 
 
 class ReviewModel(BaseModel):
@@ -126,3 +126,40 @@ class HealthResponse(BaseModel):
     status: str
     model_version: str
     loaded_at: str
+
+
+class UserRegister(BaseModel):
+    username: str
+    password: str
+    name: str
+
+    @field_validator("username", "password", "name")
+    @classmethod
+    def not_empty(cls, v: str) -> str:
+        if not v.strip():
+            raise ValueError("field cannot be empty")
+        return v.strip()
+
+
+class BusinessCreate(BaseModel):
+    name: str
+    category: str
+    city: str
+    neighborhood: str
+    address: str
+    price: Literal["$", "$$", "$$$", "$$$$"] = "$$"
+    rating: float = 0.0
+    lat: float = 39.9526
+    lng: float = -75.1652
+
+    @field_validator("name", "category", "city", "neighborhood", "address")
+    @classmethod
+    def not_empty(cls, v: str) -> str:
+        if not v.strip():
+            raise ValueError("field cannot be empty")
+        return v.strip()
+
+    @field_validator("rating")
+    @classmethod
+    def valid_rating(cls, v: float) -> float:
+        return max(0.0, min(5.0, v))
