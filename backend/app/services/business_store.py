@@ -62,7 +62,27 @@ _CAT_IMAGES: dict[str, list[str]] = {
     "Grocery":                  ["photo-1542838132-92c53300491e","photo-1498579150354-977475b7ea0b"],
     "Restaurants":              ["photo-1517248135467-4c7edcad34c4","photo-1414235077428-338989a2e8c0","photo-1555396273-367ea4eb4db5"],
     "Food":                     ["photo-1504674900247-0877df9cc836","photo-1555396273-367ea4eb4db5","photo-1517248135467-4c7edcad34c4"],
-    "default":                  ["photo-1517248135467-4c7edcad34c4","photo-1414235077428-338989a2e8c0","photo-1555396273-367ea4eb4db5","photo-1504674900247-0877df9cc836","photo-1485963631004-f2f00b1d6606"],
+    "Fast Food":                ["photo-1568901346375-23c9450c58cd","photo-1550317138-10000687a72b","photo-1619096252214-ef06c45683e3"],
+    # Non-restaurant categories
+    "Beauty & Spas":            ["photo-1560066984-138dadb4c035","photo-1522337360788-8b13dee7a37e","photo-1487412947147-5cebf100ffc2"],
+    "Hair Salons":              ["photo-1522337360788-8b13dee7a37e","photo-1487412947147-5cebf100ffc2","photo-1560066984-138dadb4c035"],
+    "Nail Salons":              ["photo-1604654894610-df63bc536371","photo-1560066984-138dadb4c035","photo-1522337360788-8b13dee7a37e"],
+    "Shopping":                 ["photo-1483985988355-763728e1935b","photo-1555529669-e69e7aa0ba9a","photo-1441986300917-64674bd600d8"],
+    "Automotive":               ["photo-1486262715619-67b85e0b08d3","photo-1503376780353-7e6692767b70","photo-1619642751034-765dfdf7c58e"],
+    "Auto Repair":              ["photo-1486262715619-67b85e0b08d3","photo-1503376780353-7e6692767b70"],
+    "Home Services":            ["photo-1484154218962-a197022b5858","photo-1513694203232-719a280e022f","photo-1558618666-fcd25c85cd64"],
+    "Health & Medical":         ["photo-1576091160399-112ba8d25d1d","photo-1559757148-5c350d0d3c56","photo-1631815588090-d4bfec5b1ccb"],
+    "Active Life":              ["photo-1571019614242-c5c5dee9f50b","photo-1534438327276-14e5300c3a48","photo-1486218119243-13301543a1b4"],
+    "Fitness & Instruction":    ["photo-1571019614242-c5c5dee9f50b","photo-1534438327276-14e5300c3a48"],
+    "Hotels & Travel":          ["photo-1566073771259-6a8506099945","photo-1455587734955-081b22074882","photo-1520250497591-112ba2864d68"],
+    "Hotels":                   ["photo-1566073771259-6a8506099945","photo-1455587734955-081b22074882","photo-1520250497591-112ba2864d68"],
+    "Arts & Entertainment":     ["photo-1513364776144-60967b0f800f","photo-1460661419201-fd4cecdf8a8b","photo-1459749411175-04bf5292ceea"],
+    "Event Planning & Services":["photo-1530103862676-de8c9debad1d","photo-1464366400600-7168b8af9bc3","photo-1519671482749-fd09be7ccebf"],
+    "Local Services":           ["photo-1450101499163-c8848c66ca85","photo-1554774853-719586f82d77"],
+    "Pets":                     ["photo-1587300003388-59208cc962cb","photo-1548802673-380ab8ebc7b7","photo-1601758124510-52d02ddb7cbd"],
+    "Education":                ["photo-1481627834876-b7833e8f5570","photo-1456513080510-7bf3a84b82f8"],
+    "Financial Services":       ["photo-1450101499163-c8848c66ca85","photo-1554774853-719586f82d77"],
+    "default":                  ["photo-1444703686981-a3abbc4d4fe3","photo-1477959858617-67f85cf4f1df","photo-1480714378408-67cf0d13bc1b"],
 }
 
 

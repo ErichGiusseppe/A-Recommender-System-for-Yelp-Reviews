@@ -540,13 +540,24 @@ def inject_scores(
                 biz["ctx"]   = match
                 biz["pop"]   = 0
             else:
-                # Priority 4: popularity fallback
+                # Priority 4: city popularity fallback (new_visitor|city precomputed)
                 rec = city_fallback.get(biz["id"])
                 if rec:
                     biz["match"] = rec["match"]
                     biz["cf"]    = rec["cf"]
                     biz["ctx"]   = rec["ctx"]
                     biz["pop"]   = rec["pop"]
+                else:
+                    # Priority 5: raw popularity from content model.
+                    # Covers any business in business_meta.parquet that isn't in any
+                    # precomputed list — e.g. Beauty & Spas, Shopping, Automotive.
+                    raw_pop = _biz_pop_cb.get(biz["id"])
+                    if raw_pop:
+                        pop_pct      = round(raw_pop * 100)
+                        biz["match"] = max(1, pop_pct)
+                        biz["cf"]    = 0
+                        biz["ctx"]   = 0
+                        biz["pop"]   = pop_pct
 
         result.append(biz)
 
