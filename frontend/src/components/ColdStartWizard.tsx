@@ -16,10 +16,10 @@ const OCCASIONS = [
 ];
 
 const TIME_SLOTS = [
-  { id: "morning",   label: "Morning",    sub: "6 – 11 AM",    cats: "Coffee Tea Breakfast Brunch" },
-  { id: "lunch",     label: "Afternoon",  sub: "11 AM – 3 PM", cats: "Shopping Services Casual" },
-  { id: "dinner",    label: "Evening",    sub: "5 – 10 PM",    cats: "Arts Entertainment Restaurants" },
-  { id: "latenight", label: "Late night", sub: "After 10 PM",  cats: "Bars Nightlife Cocktail" },
+  { id: "morning",   label: "Morning",    sub: "6 – 11 AM",    cats: "Coffee, Tea, Breakfast, Brunch" },
+  { id: "lunch",     label: "Afternoon",  sub: "11 AM – 3 PM", cats: "Food, Restaurants, Sandwiches" },
+  { id: "dinner",    label: "Evening",    sub: "5 – 10 PM",    cats: "Restaurants, Italian, Steakhouses" },
+  { id: "latenight", label: "Late night", sub: "After 10 PM",  cats: "Bars, Nightlife, Pizza" },
 ];
 
 const PRICES = [
@@ -30,15 +30,20 @@ const PRICES = [
 ];
 
 // ── Parameter builder ─────────────────────────────────────────────────────────
-// moods now stores real category names (e.g. "Italian", "Bars") — join directly.
+// The TF-IDF was trained on comma-separated Yelp category strings.
+// token_pattern=[A-Za-z][A-Za-z ]+ treats spaces as part of a token, so
+// space-joined words become ONE unknown token. Must use commas as separators.
 
 export function profileToParams(profile: ColdStartProfile) {
   const timeSlot  = TIME_SLOTS.find(t => t.id === profile.timeSlot);
   const occasion  = OCCASIONS.find(o => o.id === profile.occasion);
   const priceItem = PRICES.find(p => p.id === profile.price);
 
-  const categories = [profile.moods.join(" "), timeSlot?.cats ?? ""].join(" ").trim()
-    || "Local Services";
+  const parts = [
+    ...profile.moods,
+    ...(timeSlot?.cats ?? "").split(",").map(s => s.trim()).filter(Boolean),
+  ];
+  const categories = parts.join(", ") || "Restaurants, Food";
   const stars = occasion?.stars ?? 0.75;
   const price = priceItem?.val ?? 2;
 
