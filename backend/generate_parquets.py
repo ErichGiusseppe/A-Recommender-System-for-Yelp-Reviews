@@ -372,28 +372,64 @@ pop_by_bid  = dict(zip(warm_biz_df['business_id'], pop_norm2))
 
 top_n_rows, expl_rows = [], []
 
-# Fixed masks (same for every user — compute once outside the loop)
-_philly_mask = warm_biz_df['city'].str.contains('hiladelphia', na=False)
-_open_mask   = warm_biz_df['is_open'] == 1
+# Fixed mask — open businesses only (same for every user)
+_open_mask = warm_biz_df['is_open'] == 1
+
+
+def _svdpp_batch(model, raw_uid: str, raw_iids) -> np.ndarray:
+    """
+    Vectorized SVD++ scores for one user vs many items.
+    Formula: μ + b_u + b_i + q_i · (p_u + |N(u)|^{-½} Σ_{j∈N(u)} y_j)
+    Returns array of predicted ratings aligned with raw_iids (unknown items → global_mean).
+    """
+    ts = model.trainset
+    n  = len(raw_iids)
+
+    # ── User vector ──────────────────────────────────────────────────────────
+    try:
+        u    = ts.to_inner_uid(raw_uid)
+        pu   = model.pu[u]
+        bu   = float(model.bu[u])
+        seen = ts.ur[u]                          # [(inner_item_id, rating), ...]
+        if seen:
+            iids_seen = [iid for iid, _ in seen]
+            u_impl    = model.yj[iids_seen].sum(axis=0) / np.sqrt(len(seen))
+        else:
+            u_impl = np.zeros(model.n_factors)
+        u_vec = pu + u_impl
+    except ValueError:
+        u_vec = np.zeros(model.n_factors)
+        bu    = 0.0
+
+    # ── Item matrix ──────────────────────────────────────────────────────────
+    qi  = np.empty((n, model.n_factors), dtype=np.float32)
+    bi  = np.empty(n,                    dtype=np.float32)
+    for k, raw_iid in enumerate(raw_iids):
+        try:
+            i     = ts.to_inner_iid(raw_iid)
+            qi[k] = model.qi[i]
+            bi[k] = model.bi[i]
+        except ValueError:
+            qi[k] = 0.0
+            bi[k] = 0.0
+
+    scores = model.trainset.global_mean + bu + bi + qi @ u_vec
+    return np.clip(scores, 1.0, 5.0)
+
 
 for alias, real_id in ALL_USERS.items():
     seen = train_seen.get(real_id, set())
 
     if svdpp_model is not None:
-        # ── PRE-FILTER: Philadelphia warm businesses, open, unseen ───────────
+        # ── PRE-FILTER: all cities, open, unseen ─────────────────────────────
         seen_mask  = warm_biz_df['business_id'].isin(seen)
-        candidates = warm_biz_df[_philly_mask & _open_mask & ~seen_mask].copy()
+        candidates = warm_biz_df[_open_mask & ~seen_mask].copy()
 
-        if len(candidates) == 0:
-            # Fallback: all warm open unseen businesses (cross-city)
-            candidates = warm_biz_df[open_mask & ~seen_mask].copy()
+        print(f'  {alias:8s}: {len(candidates):,} candidates (all cities)', flush=True)
 
-        print(f'  {alias:8s}: {len(candidates):,} candidates after pre-filter', flush=True)
-
-        # ── SVD++ SCORE ───────────────────────────────────────────────────────
-        candidates['cf_raw'] = candidates['business_id'].apply(
-            lambda bid: svdpp_model.predict(real_id, bid).est
-        )
+        # ── SVD++ SCORE — vectorized, ~10s vs ~5 min with predict() loop ─────
+        cf_raw = _svdpp_batch(svdpp_model, real_id, candidates['business_id'].tolist())
+        candidates['cf_raw']  = cf_raw
         candidates['cf_norm'] = (candidates['cf_raw'] - 1.0) / 4.0  # [1-5]→[0-1]
 
         # ── CONTEXTUAL (neutral hour=15 at generate time; re-ranked live) ────
