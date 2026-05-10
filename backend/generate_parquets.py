@@ -355,10 +355,7 @@ print('── 7. Generating top-N for demo users via SVD++...', flush=True)
 t0 = time.time()
 
 # ── Load pre-trained SVD++ model ────────────────────────────────────────────
-SVDPP_PATH = (
-    Path(__file__).parent.parent / 'taller 2' / 'Modelos'
-    / 'Modelos_SVD_100' / 'model_SVDpp_100.joblib'
-)
+SVDPP_PATH = Path(__file__).parent / 'data' / 'models' / 'model_SVDpp_100.joblib'
 if SVDPP_PATH.exists():
     print(f'  Loading SVD++ from {SVDPP_PATH} ...', flush=True)
     svdpp_model = joblib.load(SVDPP_PATH)
