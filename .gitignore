@@ -229,6 +229,13 @@ backend/notebook_env/
 backend/.env
 backend/.env.example
 
+# Taller 2 — large model files and notebooks (not redistributable, >2GB)
+taller 2/
+*.zip
+
+# macOS metadata
+.DS_Store
+
 # Frontend env overrides
 frontend/.env.local
 frontend/.env
