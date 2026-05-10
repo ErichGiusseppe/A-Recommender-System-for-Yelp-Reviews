@@ -295,22 +295,27 @@ def inject_scores(
     is_guest = user_id in ("new_visitor", "default") or not user_id
     personal_recs = [] if is_guest else _top_n.get(user_id, [])
 
+    # City cold-start fallback — used when personal recs don't cover the city
+    city_key     = f"new_visitor|{city}" if city else None
+    city_fallback: dict = {
+        r["business_id"]: r
+        for r in (
+            (_top_n.get(city_key) if city_key else None)
+            or _top_n.get("new_visitor")
+            or []
+        )
+    }
+
     if personal_recs:
-        # Warm user: use SVD++ personal recs only — don't dilute with cold-start
         recs_by_id: dict = {r["business_id"]: r for r in personal_recs}
     else:
-        # Guest / cold-start: use city-specific or global profile
-        if city:
-            city_key = f"new_visitor|{city}"
-            fallback = _top_n.get(city_key) or _top_n.get("new_visitor") or []
-        else:
-            fallback = _top_n.get("new_visitor") or []
-        recs_by_id = {r["business_id"]: r for r in fallback}
+        recs_by_id = city_fallback
 
     result = []
     for b in businesses:
         biz = dict(b)
-        rec = recs_by_id.get(biz["id"])
+        # Personal SVD++ score first; fall back to city cold-start if not covered
+        rec = recs_by_id.get(biz["id"]) or city_fallback.get(biz["id"])
         if rec:
             biz["match"] = rec["match"]
             biz["cf"]    = rec["cf"]

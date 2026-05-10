@@ -21,7 +21,8 @@ PHOTOS_BASE_URL = os.environ.get("PHOTOS_BASE_URL", "http://localhost:8000/photo
 
 _businesses: list[dict] = []
 _by_id: dict[str, dict] = {}
-_biz_photos: dict[str, list[str]] = {}   # business_id → [photo_id, ...]
+_biz_photos: dict[str, list[str]] = {}    # business_id → [photo_id, ...]
+_biz_reviews: dict[str, list[dict]] = {}  # business_id → [{stars, text, date}, ...]
 _loaded_from_parquet: bool = False
 
 # Multiple Unsplash photos per category — rotated by hash(business_id) so each
@@ -281,9 +282,33 @@ def add_business(data: dict) -> dict:
     return biz
 
 
+def _load_reviews() -> None:
+    global _biz_reviews
+    reviews_path = DATA_DIR / "reviews_sample.parquet"
+    if not reviews_path.exists():
+        logger.info("reviews_sample.parquet not found — run generate_reviews.py to enable review tab")
+        return
+    try:
+        import pandas as pd  # type: ignore
+        df = pd.read_parquet(reviews_path)
+        for bid, group in df.groupby("business_id"):
+            _biz_reviews[str(bid)] = [
+                {
+                    "author": f"Yelp user",
+                    "rating": float(row["stars"]),
+                    "text":   str(row["text"]),
+                }
+                for _, row in group.iterrows()
+            ]
+        logger.info("business_store: loaded reviews for %d businesses", len(_biz_reviews))
+    except Exception as exc:
+        logger.warning("Error loading reviews_sample.parquet (%s)", exc)
+
+
 def startup() -> None:
     _load_photos()     # must run before _load_parquet so gallery URLs are ready
     _load_parquet()
+    _load_reviews()
     _load_local_businesses()
 
 
@@ -296,7 +321,31 @@ def get_businesses() -> list[dict]:
 
 
 def get_business(business_id: str) -> Optional[dict]:
-    return _by_id.get(business_id)
+    biz = _by_id.get(business_id)
+    if biz is None:
+        return None
+    reviews = _biz_reviews.get(business_id)
+    if reviews:
+        biz = dict(biz)
+        biz["reviewList"] = reviews
+    return biz
+
+
+def get_categories_with_images(n: int = 20) -> list[dict]:
+    """Top N categories by business count, with Unsplash cover images."""
+    from collections import Counter
+    counts: Counter = Counter(
+        biz["category"] for biz in _businesses if biz.get("category")
+    )
+    return [
+        {"name": cat, "img": _img(cat), "count": count}
+        for cat, count in counts.most_common(n)
+    ]
+
+
+def get_cities() -> list[str]:
+    """Sorted list of distinct cities present in loaded businesses."""
+    return sorted({biz["city"] for biz in _businesses if biz.get("city")})
 
 
 def get_categories_with_images(n: int = 20) -> list[dict]:
