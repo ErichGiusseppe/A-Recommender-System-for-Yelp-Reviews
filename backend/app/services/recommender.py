@@ -351,8 +351,27 @@ def get_explanation(user_id: str, business_id: str) -> Optional[dict]:
         return _explanations[fallback2]
     for rec in get_recommendations(user_id, 200):
         if rec["business_id"] == business_id:
-            return {"cf": rec["cf"], "ctx": rec["ctx"], "pop": rec["pop"], "match": rec["match"]}
+            expl = {"cf": rec["cf"], "ctx": rec["ctx"], "pop": rec["pop"], "match": rec["match"]}
+            # Only return if at least one signal is non-zero (backfill succeeded)
+            if expl["cf"] > 0 or expl["ctx"] > 0 or expl["pop"] > 0:
+                return expl
     return None
+
+
+def get_popularity_score(business_id: str) -> Optional[dict]:
+    """Return a popularity-only score for any business in the content model.
+
+    Used as last-resort fallback when neither the user's personal SVD++ explanation
+    nor the cold-start content model provides a score for this business.  CF=0 because
+    there's no collaborative signal for this user-business pair; ctx is computed from
+    the business's category tags and the current hour; pop is the normalized review count.
+    """
+    pop = _biz_pop_cb.get(business_id)
+    if pop is None:
+        return None
+    pop_pct = round(pop * 100)
+    match   = max(1, pop_pct)
+    return {"match": match, "cf": 0, "ctx": 0, "pop": pop_pct}
 
 
 def _content_scores(
