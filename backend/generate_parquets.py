@@ -114,6 +114,10 @@ DEMO_DISPLAY_NAMES = {
     'camila': ('Camila Restrepo', 'CR'),
     'daniel': ('Daniel Park',     'DP'),
     'sara':   ('Sara Gómez',      'SG'),
+    'alex':   ('Alex Kim',        'AK'),
+    'maria':  ('María Torres',    'MT'),
+    'carlos': ('Carlos Méndez',   'CM'),
+    'sofia':  ('Sofía Leal',      'SL'),
 }
 
 TASTE_PROFILES = {
@@ -291,9 +295,12 @@ philly_rev_counts = (
     reviews_warm[reviews_warm['business_id'].isin(philly_biz_ids)]
     ['user_id'].value_counts()
 )
-top3 = philly_rev_counts.head(3).index.tolist()
+top7 = philly_rev_counts.head(7).index.tolist()
 
-DEMO_MAP = {'camila': top3[0], 'daniel': top3[1], 'sara': top3[2]}
+DEMO_MAP = {
+    'camila': top7[0], 'daniel': top7[1], 'sara':   top7[2],
+    'alex':   top7[3], 'maria':  top7[4], 'carlos': top7[5], 'sofia': top7[6],
+}
 EXTRA_MAP: dict[str, str] = {}
 candidates_path = ARTIFACTS / 'test_users_candidates.json'
 if candidates_path.exists():
@@ -343,47 +350,119 @@ item_factors = als_model.user_factors   # shape (n_i, factors) — one row per i
 print(f'  user_factors {user_factors.shape}  item_factors {item_factors.shape}', flush=True)
 
 
-# ── 7. Batch top-N for demo/test users ───────────────────────────────────────
-print('── 7. Generating top-N for all users...', flush=True)
+# ── 7. Batch top-N for demo/test users via SVD++ (pre-filter → CF → hybrid) ──
+print('── 7. Generating top-N for demo users via SVD++...', flush=True)
 t0 = time.time()
+
+# ── Load pre-trained SVD++ model ────────────────────────────────────────────
+SVDPP_PATH = (
+    Path(__file__).parent.parent / 'taller 2' / 'Modelos'
+    / 'Modelos_SVD_100' / 'model_SVDpp_100.joblib'
+)
+if SVDPP_PATH.exists():
+    print(f'  Loading SVD++ from {SVDPP_PATH} ...', flush=True)
+    svdpp_model = joblib.load(SVDPP_PATH)
+    print(f'  SVD++ loaded  pu={svdpp_model.pu.shape}  qi={svdpp_model.qi.shape}', flush=True)
+else:
+    print(f'  WARNING: SVD++ model not found at {SVDPP_PATH} — falling back to ALS', flush=True)
+    svdpp_model = None
+
+# Popularity scaler aligned to warm_biz_df (used for all candidates)
+rc_warm     = warm_biz_df['review_count'].values.astype(float)
+pop_scaler2 = MinMaxScaler()
+pop_norm2   = pop_scaler2.fit_transform(np.log1p(rc_warm).reshape(-1, 1)).flatten()
+pop_by_bid  = dict(zip(warm_biz_df['business_id'], pop_norm2))
+
 top_n_rows, expl_rows = [], []
 
+# Fixed masks (same for every user — compute once outside the loop)
+_philly_mask = warm_biz_df['city'].str.contains('hiladelphia', na=False)
+_open_mask   = warm_biz_df['is_open'] == 1
+
 for alias, real_id in ALL_USERS.items():
-    if real_id not in user2idx:
-        print(f'  {alias}: not in ALS training data — skipping CF', flush=True)
-        continue
-
-    u_idx = user2idx[real_id]
-    u_vec = user_factors[u_idx].astype(np.float64)     # (factors,)
-
-    # ALS raw score = item_factors @ u_vec  →  normalise [0,1]
-    cf_raw = item_factors.astype(np.float64).dot(u_vec)
-    cf_min, cf_max = cf_raw.min(), cf_raw.max()
-    cf_arr = (cf_raw - cf_min) / max(cf_max - cf_min, 1e-8)
-
-    hybrid = W_CF * cf_arr + W_CTX * ctx_arr + W_POP * pop_arr
-
-    # Mask seen businesses
     seen = train_seen.get(real_id, set())
-    for k, bid in enumerate(biz_list):
-        if bid in seen:
-            hybrid[k] = -np.inf
 
-    top_idx = np.argpartition(hybrid, -TOP_N)[-TOP_N:]
-    top_idx = top_idx[np.argsort(hybrid[top_idx])[::-1]]
+    if svdpp_model is not None:
+        # ── PRE-FILTER: Philadelphia warm businesses, open, unseen ───────────
+        seen_mask  = warm_biz_df['business_id'].isin(seen)
+        candidates = warm_biz_df[_philly_mask & _open_mask & ~seen_mask].copy()
 
-    for k in top_idx:
-        bid   = biz_list[k]
-        score = float(hybrid[k])
-        top_n_rows.append({'user_id': real_id, 'business_id': bid, 'score': round(score, 4)})
-        expl_rows.append({'user_id': real_id, 'business_id': bid,
-                          'cf':  round(float(cf_arr[k]) * 100),
-                          'ctx': round(float(ctx_arr[k]) * 100),
-                          'pop': round(float(pop_arr[k]) * 100)})
+        if len(candidates) == 0:
+            # Fallback: all warm open unseen businesses (cross-city)
+            candidates = warm_biz_df[open_mask & ~seen_mask].copy()
 
-    print(f'  {alias:8s}: top-{TOP_N} done  best={float(hybrid[top_idx[0]]):.4f}', flush=True)
+        print(f'  {alias:8s}: {len(candidates):,} candidates after pre-filter', flush=True)
 
-print(f'  all users in {time.time()-t0:.2f}s', flush=True)
+        # ── SVD++ SCORE ───────────────────────────────────────────────────────
+        candidates['cf_raw'] = candidates['business_id'].apply(
+            lambda bid: svdpp_model.predict(real_id, bid).est
+        )
+        candidates['cf_norm'] = (candidates['cf_raw'] - 1.0) / 4.0  # [1-5]→[0-1]
+
+        # ── CONTEXTUAL (neutral hour=15 at generate time; re-ranked live) ────
+        candidates['ctx_score'] = candidates['category_list'].apply(
+            lambda cats: _ctx_score(cats, hour=15)
+        )
+
+        # ── POPULARITY ────────────────────────────────────────────────────────
+        candidates['pop_score'] = candidates['business_id'].map(pop_by_bid).fillna(0.0)
+
+        # ── HYBRID ────────────────────────────────────────────────────────────
+        candidates['score'] = (
+            W_CF  * candidates['cf_norm'] +
+            W_CTX * candidates['ctx_score'] +
+            W_POP * candidates['pop_score']
+        )
+
+        top_cands = candidates.nlargest(TOP_N, 'score')
+
+        for _, row in top_cands.iterrows():
+            bid   = row['business_id']
+            score = float(row['score'])
+            top_n_rows.append({'user_id': real_id, 'business_id': bid, 'score': round(score, 4)})
+            expl_rows.append({
+                'user_id':     real_id,
+                'business_id': bid,
+                'cf':  round(float(row['cf_norm']) * 100),
+                'ctx': round(float(row['ctx_score']) * 100),
+                'pop': round(float(row['pop_score']) * 100),
+            })
+
+        best = float(top_cands['score'].iloc[0]) if len(top_cands) else 0.0
+        print(f'  {alias:8s}: top-{TOP_N} done  best={best:.4f}', flush=True)
+
+    else:
+        # ── ALS FALLBACK (if SVD++ model file missing) ────────────────────────
+        if real_id not in user2idx:
+            print(f'  {alias}: not in ALS training data — skipping', flush=True)
+            continue
+
+        u_idx   = user2idx[real_id]
+        u_vec   = user_factors[u_idx].astype(np.float64)
+        cf_raw  = item_factors.astype(np.float64).dot(u_vec)
+        cf_min, cf_max = cf_raw.min(), cf_raw.max()
+        cf_arr_u = (cf_raw - cf_min) / max(cf_max - cf_min, 1e-8)
+        hybrid  = W_CF * cf_arr_u + W_CTX * ctx_arr + W_POP * pop_arr
+
+        for k, bid in enumerate(biz_list):
+            if bid in seen:
+                hybrid[k] = -np.inf
+
+        top_idx = np.argpartition(hybrid, -TOP_N)[-TOP_N:]
+        top_idx = top_idx[np.argsort(hybrid[top_idx])[::-1]]
+
+        for k in top_idx:
+            bid   = biz_list[k]
+            score = float(hybrid[k])
+            top_n_rows.append({'user_id': real_id, 'business_id': bid, 'score': round(score, 4)})
+            expl_rows.append({'user_id': real_id, 'business_id': bid,
+                              'cf':  round(float(cf_arr_u[k]) * 100),
+                              'ctx': round(float(ctx_arr[k]) * 100),
+                              'pop': round(float(pop_arr[k]) * 100)})
+
+        print(f'  {alias:8s}: top-{TOP_N} done (ALS fallback)  best={float(hybrid[top_idx[0]]):.4f}', flush=True)
+
+print(f'  all users done in {time.time()-t0:.2f}s', flush=True)
 
 
 # ── 8. Content-based cold-start (global + per top city) ──────────────────────
@@ -481,7 +560,7 @@ joblib.dump(
 )
 
 eval_data = {
-    'model_version': f'als-hybrid-{ALS_FACTORS}f-{ALS_ITERATIONS}it',
+    'model_version': f'svdpp-hybrid-{ALS_FACTORS}f-als-coldstart',
     'n_users': int(n_u), 'n_items': int(n_i),
     'n_train': int(len(train_df)),
     'n_test':  int(len(reviews_warm) - len(train_df)),

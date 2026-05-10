@@ -60,7 +60,7 @@ def get_me(current_user: SimpleNamespace = Depends(get_current_user)):
     avatar = profile.get("avatar", (name[:2].upper() if len(name) >= 2 else "??"))
 
     top_recs = recommender.get_recommendations(current_user.user_id, limit=50)
-    saved_ids = [r["business_id"] for r in top_recs[:9]]
+    saved_ids = [r["business_id"] for r in top_recs[:12]]
     season_taste = _compute_season_taste(current_user.user_id)
 
     return {
@@ -72,7 +72,7 @@ def get_me(current_user: SimpleNamespace = Depends(get_current_user)):
         "bio": "Exploring Philadelphia one plate at a time.",
         "member_since": "2024",
         "stats": {
-            "saved":      len(top_recs),
+            "saved":      len(saved_ids),
             "reviews":    max(5, len(top_recs) // 3),
             "cities":     1,
             "avg_rating": 4.2,

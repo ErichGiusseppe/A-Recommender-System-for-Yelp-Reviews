@@ -106,14 +106,16 @@ interface LocationContextValue {
 const LocationContext = createContext<LocationContextValue | null>(null);
 
 export function NeighborhoodProvider({ children }: { children: ReactNode }) {
-  const storedCity = localStorage.getItem(CITY_KEY) ?? "";
-  const storedHood = localStorage.getItem(HOOD_KEY) ?? "";
-  const validCity  = storedCity && CITY_CENTERS[storedCity]  ? storedCity  : "";
-  const validHood  = storedHood && validCity && CITY_NEIGHBORHOODS[validCity]?.[storedHood] ? storedHood : "";
-
-  const [city,         _setCity]  = useState(validCity);
-  const [neighborhood, _setHood]  = useState(validHood);
-  const [showPicker,   setPicker] = useState(!validCity);
+  const [city, _setCity] = useState(() => {
+    const s = localStorage.getItem(CITY_KEY) ?? "";
+    return s && CITY_CENTERS[s] ? s : "";
+  });
+  const [neighborhood, _setHood] = useState(() => {
+    const c = localStorage.getItem(CITY_KEY) ?? "";
+    const n = localStorage.getItem(HOOD_KEY) ?? "";
+    return n && c && CITY_NEIGHBORHOODS[c]?.[n] ? n : "";
+  });
+  const [showPicker, setPicker] = useState(() => !localStorage.getItem(CITY_KEY));
 
   function setCity(c: string) {
     _setCity(c);

@@ -26,15 +26,21 @@ PROFILES_PATH = DATA_DIR / "user_profiles_map.json"
 
 # Lazy-loaded Yelp user index {user_id: name}
 _yelp_users: Optional[dict[str, str]] = None
+# Cached profiles to avoid reading disk on every request
+_profiles_cache: Optional[dict] = None
 
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
 
 def _profiles() -> dict:
-    if PROFILES_PATH.exists():
-        with open(PROFILES_PATH, encoding="utf-8-sig") as f:
-            return json.load(f)
-    return {}
+    global _profiles_cache
+    if _profiles_cache is None:
+        if PROFILES_PATH.exists():
+            with open(PROFILES_PATH, encoding="utf-8-sig") as f:
+                _profiles_cache = json.load(f)
+        else:
+            _profiles_cache = {}
+    return _profiles_cache
 
 
 def _get_yelp_users() -> dict[str, str]:

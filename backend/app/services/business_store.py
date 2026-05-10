@@ -112,13 +112,22 @@ def _price_label(price_range) -> str:
         return "$$"
 
 
+def _safe_float(val, default: float) -> float:
+    """Return val as float, falling back to default if None/NaN/invalid."""
+    try:
+        v = float(val)
+        return default if (v != v) else v  # v != v is True only for NaN
+    except (TypeError, ValueError):
+        return default
+
+
 def _row_to_biz(row: dict) -> dict:
     cats_raw = str(row.get("categories") or "")
     cat_list = [c.strip() for c in cats_raw.split(",") if c.strip()]
     primary  = cat_list[0] if cat_list else "Restaurant"
     tags     = [c.lower().replace("&", "and").replace(" ", "-") for c in cat_list[:5]]
-    svg_x    = row.get("svg_x") or 340.0
-    svg_y    = row.get("svg_y") or 350.0
+    svg_x    = _safe_float(row.get("svg_x"), 340.0)
+    svg_y    = _safe_float(row.get("svg_y"), 350.0)
     neighborhood = str(row.get("neighborhood") or "Philadelphia")
 
     raw_city = str(row.get("city") or "Philadelphia")
@@ -137,7 +146,7 @@ def _row_to_biz(row: dict) -> dict:
         "category":     primary,
         "city":         city,
         "neighborhood": neighborhood,
-        "rating":       float(row.get("stars") or 4.0),
+        "rating":       _safe_float(row.get("stars"), 4.0),
         "reviews":      int(row.get("review_count") or 0),
         "price":        _price_label(row.get("price_range")),
         "match":        0,          # injected per-user at request time
@@ -150,9 +159,9 @@ def _row_to_biz(row: dict) -> dict:
         "cf":           0,          # injected per-user at request time
         "ctx":          0,
         "pop":          0,
-        "lat":          float(row.get("latitude") or 39.9526),
-        "lng":          float(row.get("longitude") or -75.1652),
-        "coords":       {"x": float(svg_x), "y": float(svg_y)},
+        "lat":          _safe_float(row.get("latitude"), 39.9526),
+        "lng":          _safe_float(row.get("longitude"), -75.1652),
+        "coords":       {"x": svg_x, "y": svg_y},
         "hours":        "",
         "address":      str(row.get("address") or ""),
         "tags":         tags,
