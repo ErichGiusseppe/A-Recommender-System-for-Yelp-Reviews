@@ -18,9 +18,9 @@ function getTimeBucket(hour: number): { label: string; icon: string } {
 }
 
 export default function Search() {
-  const [query, setQuery]       = useState("");
-  const [category, setCategory] = useState<string | null>(null);
-  const [price, setPrice]       = useState<string | null>(null);
+  const [query, setQuery]         = useState("");
+  const [categories, setCategories] = useState<string[]>([]);
+  const [prices, setPrices]         = useState<string[]>([]);
   const [results, setResults]   = useState<Business[] | null>(null);
   const [searching, setSearching] = useState(false);
   const [hoverId, setHoverId]   = useState<string | null>(null);
@@ -32,7 +32,7 @@ export default function Search() {
   const timeBucket = useMemo(() => getTimeBucket(new Date().getHours()), []);
 
   useEffect(() => {
-    const hasFilter = query.trim() || category || price;
+    const hasFilter = query.trim() || categories.length > 0 || prices.length > 0;
     if (!hasFilter) {
       setResults(null);
       return;
@@ -41,10 +41,10 @@ export default function Search() {
     const timer = setTimeout(() => {
       api
         .search({
-          q:        query.trim() || undefined,
-          category: category    || undefined,
-          price:    price       || undefined,
-          limit:    100,
+          q:          query.trim() || undefined,
+          categories: categories.length > 0 ? categories : undefined,
+          prices:     prices.length > 0     ? prices     : undefined,
+          limit:      100,
         })
         .then((r) => {
           const currentCity = city || "Philadelphia";
@@ -55,16 +55,20 @@ export default function Search() {
         .finally(() => setSearching(false));
     }, 300);
     return () => clearTimeout(timer);
-  }, [query, category, price, city]);
+  }, [query, categories, prices, city]);
 
   const list = results ?? businesses;
-  const hasActiveFilter = query || category || price;
+  const hasActiveFilter = query || categories.length > 0 || prices.length > 0;
 
   const toggleCategory = (cat: string) =>
-    setCategory((prev) => (prev === cat ? null : cat));
+    setCategories((prev) =>
+      prev.includes(cat) ? prev.filter((c) => c !== cat) : [...prev, cat]
+    );
 
   const togglePrice = (p: string) =>
-    setPrice((prev) => (prev === p ? null : p));
+    setPrices((prev) =>
+      prev.includes(p) ? prev.filter((x) => x !== p) : [...prev, p]
+    );
 
   return (
     <div className="mx-auto px-4 sm:px-8 pt-8" style={{ maxWidth: 1280 }}>
@@ -132,7 +136,7 @@ export default function Search() {
         {/* Category chips — from real data */}
         <div className="flex flex-wrap gap-2 mb-2">
           {categoryList.map((c) => (
-            <Chip key={c.name} active={category === c.name} onClick={() => toggleCategory(c.name)}>
+            <Chip key={c.name} active={categories.includes(c.name)} onClick={() => toggleCategory(c.name)}>
               {c.name}
             </Chip>
           ))}
@@ -141,14 +145,14 @@ export default function Search() {
         {/* Price + meta row */}
         <div className="flex items-center gap-2 mt-3 flex-wrap">
           {PRICES.map((p) => (
-            <Chip key={p} active={price === p} onClick={() => togglePrice(p)}>
+            <Chip key={p} active={prices.includes(p)} onClick={() => togglePrice(p)}>
               {p}
             </Chip>
           ))}
 
           {hasActiveFilter && (
             <button
-              onClick={() => { setQuery(""); setCategory(null); setPrice(null); }}
+              onClick={() => { setQuery(""); setCategories([]); setPrices([]); }}
               className="font-sans text-[12px] px-3 py-1.5 rounded-full transition-all"
               style={{ color: "#C2410C", border: "1px solid #FECACA", background: "#FFF7F5" }}
             >

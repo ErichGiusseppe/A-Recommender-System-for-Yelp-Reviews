@@ -388,8 +388,8 @@ def get_cities() -> list[str]:
 
 def search_businesses(
     q: Optional[str] = None,
-    category: Optional[str] = None,
-    price: Optional[str] = None,
+    categories: list[str] | None = None,
+    prices: list[str] | None = None,
 ) -> list[dict]:
     items = _businesses
     if q:
@@ -401,8 +401,9 @@ def search_businesses(
             or q_lower in b["neighborhood"].lower()
             or any(q_lower in tag for tag in b.get("tags", []))
         ]
-    if category:
-        items = [b for b in items if b["category"].lower() == category.lower()]
-    if price:
-        items = [b for b in items if b["price"] == price]
+    if categories:
+        cats_lower = {c.lower() for c in categories}
+        items = [b for b in items if b["category"].lower() in cats_lower]
+    if prices:
+        items = [b for b in items if b["price"] in prices]
     return items

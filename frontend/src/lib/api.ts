@@ -152,15 +152,15 @@ export const api = {
 
   search: (params: {
     q?: string;
-    category?: string;
-    price?: string;
+    categories?: string[];
+    prices?: string[];
     limit?: number;
   }) => {
     const qs = new URLSearchParams();
-    if (params.q)        qs.set("q",        params.q);
-    if (params.category) qs.set("category", params.category);
-    if (params.price)    qs.set("price",    params.price);
-    if (params.limit)    qs.set("limit",    String(params.limit));
+    if (params.q)     qs.set("q",     params.q);
+    if (params.limit) qs.set("limit", String(params.limit));
+    for (const c of params.categories ?? []) qs.append("category", c);
+    for (const p of params.prices     ?? []) qs.append("price",    p);
     return get<{ items: Business[]; total: number }>(`/search?${qs}`);
   },
 
