@@ -26,15 +26,21 @@ PROFILES_PATH = DATA_DIR / "user_profiles_map.json"
 
 # Lazy-loaded Yelp user index {user_id: name}
 _yelp_users: Optional[dict[str, str]] = None
+# Cached profiles to avoid reading disk on every request
+_profiles_cache: Optional[dict] = None
 
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
 
 def _profiles() -> dict:
-    if PROFILES_PATH.exists():
-        with open(PROFILES_PATH, encoding="utf-8-sig") as f:
-            return json.load(f)
-    return {}
+    global _profiles_cache
+    if _profiles_cache is None:
+        if PROFILES_PATH.exists():
+            with open(PROFILES_PATH, encoding="utf-8-sig") as f:
+                _profiles_cache = json.load(f)
+        else:
+            _profiles_cache = {}
+    return _profiles_cache
 
 
 def _get_yelp_users() -> dict[str, str]:
@@ -42,7 +48,7 @@ def _get_yelp_users() -> dict[str, str]:
     global _yelp_users
     if _yelp_users is not None:
         return _yelp_users
-    yelp_path = DATA_DIR / "real" / "structured" / "yelp_academic_dataset_user.json"
+    yelp_path = DATA_DIR / "yelp_dataset" / "yelp_academic_dataset_user.json"
     if not yelp_path.exists():
         _yelp_users = {}
         return _yelp_users
@@ -73,7 +79,7 @@ def decode_token(token: str) -> Optional[dict]:
 def verify_user(username: str, password: str) -> Optional[dict]:
     """
     Returns {user_id, name} if credentials are valid, else None.
-    Priority: demo profiles → real Yelp users.
+    Priority: demo profiles → SQLite local users → real Yelp users.
     """
     profiles = _profiles()
 
@@ -84,6 +90,19 @@ def verify_user(username: str, password: str) -> Optional[dict]:
             return {"user_id": p["user_id"], "name": p["name"]}
         return None
 
+    # SQLite local users
+    try:
+        from app.database import get_conn
+        with get_conn() as conn:
+            row = conn.execute(
+                "SELECT user_id, name FROM local_users WHERE username=? AND password=?",
+                (username, password),
+            ).fetchone()
+        if row:
+            return {"user_id": row["user_id"], "name": row["name"]}
+    except Exception:
+        pass
+
     # Real Yelp user: username IS the user_id, password IS the name
     yelp = _get_yelp_users()
     real_name = yelp.get(username, "").strip()
@@ -91,6 +110,27 @@ def verify_user(username: str, password: str) -> Optional[dict]:
         return {"user_id": username, "name": real_name}
 
     return None
+
+
+def register_user(username: str, password: str, name: str) -> Optional[dict]:
+    """
+    Create a new user in SQLite.
+    Returns {user_id, name} on success, None if username is already taken.
+    """
+    import uuid
+    from app.database import get_conn
+    user_id = str(uuid.uuid4())
+    created_at = datetime.now(timezone.utc).isoformat()
+    try:
+        with get_conn() as conn:
+            conn.execute(
+                "INSERT INTO local_users (username, password, name, user_id, created_at) VALUES (?,?,?,?,?)",
+                (username, password, name, user_id, created_at),
+            )
+            conn.commit()
+        return {"user_id": user_id, "name": name}
+    except Exception:
+        return None  # username already taken (UNIQUE constraint)
 
 
 def get_demo_accounts() -> list[dict]:

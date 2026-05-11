@@ -2,7 +2,7 @@ import { useNavigate } from "react-router-dom";
 import type { Business } from "../../types";
 import MatchBadge from "../ui/MatchBadge";
 import Rating from "../ui/Rating";
-import WhyPickedPill from "../ui/WhyPickedPill";
+import ReasonPill from "../ui/ReasonPill";
 
 interface SearchCardProps {
   biz: Business;
@@ -65,14 +65,16 @@ export default function SearchCard({ biz, hovered, onHover, onLeave }: SearchCar
             {biz.reviews.toLocaleString()} reviews
           </span>
         </div>
-        <p
-          className="font-serif italic mt-3"
-          style={{ color: "#1C1917", fontSize: 15, lineHeight: 1.5 }}
-        >
-          "{biz.excerpt}"
-        </p>
+        {(biz.excerpt || biz.whyPicked) && (
+          <p
+            className="font-serif italic mt-3"
+            style={{ color: "#1C1917", fontSize: 15, lineHeight: 1.5 }}
+          >
+            "{biz.excerpt || biz.whyPicked}"
+          </p>
+        )}
         <div className="flex items-center gap-2 mt-auto pt-3 flex-wrap">
-          <WhyPickedPill>Why we picked this</WhyPickedPill>
+          <ReasonPill cf={biz.cf} ctx={biz.ctx} pop={biz.pop} solid />
           {biz.attributes.slice(0, 2).map((a) => (
             <span
               key={a}

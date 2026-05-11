@@ -1,7 +1,8 @@
 import type { SignalKind } from "../../types";
 
 const COLORS: Record<SignalKind, string> = {
-  cf: "#C2410C",
+  cf:  "#C2410C",
+  cb:  "#6366F1",
   ctx: "#115E59",
   pop: "#EAB308",
 };

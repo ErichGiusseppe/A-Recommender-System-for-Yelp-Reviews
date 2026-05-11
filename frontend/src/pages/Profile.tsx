@@ -272,13 +272,6 @@ export default function Profile() {
               <span style={{ color: "#C2410C" }}>Tune it below.</span>
             </p>
 
-            <button
-              onClick={() => navigate("/explain")}
-              className="font-sans text-[12px] mt-5 hover:underline"
-              style={{ color: "#C2410C", fontWeight: 500 }}
-            >
-              Tune what we recommend →
-            </button>
           </div>
 
           {/* Cities card */}

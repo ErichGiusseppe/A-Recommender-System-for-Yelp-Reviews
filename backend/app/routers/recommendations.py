@@ -8,14 +8,16 @@ from app.auth import get_current_user
 router = APIRouter()
 
 _CF_REASONING  = "Usuarios con historial similar valoraron este lugar altamente (SVD++, 50 factores latentes)."
+_CB_REASONING  = "El contenido de este lugar coincide con tus preferencias declaradas (TF-IDF content model)."
 _CTX_REASONING = "Encaja con el contexto actual: categoría, hora y zona."
 _POP_REASONING = "Muy popular en el vecindario — alto volumen de reseñas recientes."
 
 
-def _signal_details(cf: int, ctx: int, pop: int) -> SignalDetailsModel:
-    dominant = max([(cf, "cf"), (ctx, "ctx"), (pop, "pop")], key=lambda x: x[0])[1]
+def _signal_details(cf: int, cb: int, ctx: int, pop: int) -> SignalDetailsModel:
+    dominant = max([(cf, "cf"), (cb, "cb"), (ctx, "ctx"), (pop, "pop")], key=lambda x: x[0])[1]
     return SignalDetailsModel(
         cf_reasoning =_CF_REASONING  if dominant == "cf"  else f"La señal colaborativa contribuye {cf}% de tu match.",
+        cb_reasoning =_CB_REASONING  if dominant == "cb"  else f"La señal de contenido contribuye {cb}% de tu match.",
         ctx_reasoning=_CTX_REASONING if dominant == "ctx" else f"La señal contextual contribuye {ctx}% de tu match.",
         pop_reasoning=_POP_REASONING if dominant == "pop" else f"El prior de popularidad contribuye {pop}% de tu match.",
     )
@@ -33,6 +35,7 @@ def get_recommendations(
             business_id=r["business_id"],
             score=r["score"],
             cf=r["cf"],
+            cb=r.get("cb", 0),
             ctx=r["ctx"],
             pop=r["pop"],
         )
@@ -46,19 +49,21 @@ def get_recommendations(
 
 @router.get("/recommendations/cold-start", response_model=RecommendationsResponse)
 def get_cold_start(
-    categories: str = Query("Restaurants Food"),
+    categories: str = Query("Restaurants, Food"),
     price: int = Query(2, ge=1, le=4),
     stars: float = Query(0.8, ge=0.0, le=1.0),
     limit: int = Query(20, ge=1, le=50),
+    city: str | None = Query(None),
 ):
     recs = recommender.get_cold_start_recommendations(
-        categories=categories, price_pref=price, stars_pref=stars, limit=limit,
+        categories=categories, price_pref=price, stars_pref=stars, limit=limit, city=city,
     )
     items = [
         RecommendationModel(
             business_id=r["business_id"],
             score=r["score"],
             cf=r["cf"],
+            cb=r.get("cb", 0),
             ctx=r["ctx"],
             pop=r["pop"],
         )
@@ -79,7 +84,7 @@ def get_explanation(
         biz = business_store.get_business(business_id)
         if biz is None:
             raise HTTPException(status_code=404, detail=f"Business '{business_id}' not found")
-        expl = {"cf": biz.get("cf", 0), "ctx": biz.get("ctx", 0),
+        expl = {"cf": biz.get("cf", 0), "cb": biz.get("cb", 0), "ctx": biz.get("ctx", 0),
                 "pop": biz.get("pop", 0), "match": biz.get("match", 0)}
 
     return ExplanationModel(
@@ -87,7 +92,8 @@ def get_explanation(
         user_id=user_id,
         match=expl["match"],
         cf=expl["cf"],
+        cb=expl.get("cb", 0),
         ctx=expl["ctx"],
         pop=expl["pop"],
-        signal_details=_signal_details(expl["cf"], expl["ctx"], expl["pop"]),
+        signal_details=_signal_details(expl["cf"], expl.get("cb", 0), expl["ctx"], expl["pop"]),
     )

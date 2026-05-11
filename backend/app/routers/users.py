@@ -1,9 +1,10 @@
 import json
+from datetime import datetime, timezone
 from pathlib import Path
 from types import SimpleNamespace
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Response
 from app.models import UserModel, TasteProfileModel
-from app.auth import get_current_user, _profiles, get_demo_accounts
+from app.auth import get_current_user, require_auth, _profiles, get_demo_accounts
 from app.services import recommender, business_store
 
 router = APIRouter()
@@ -60,7 +61,7 @@ def get_me(current_user: SimpleNamespace = Depends(get_current_user)):
     avatar = profile.get("avatar", (name[:2].upper() if len(name) >= 2 else "??"))
 
     top_recs = recommender.get_recommendations(current_user.user_id, limit=50)
-    saved_ids = [r["business_id"] for r in top_recs[:9]]
+    saved_ids = [r["business_id"] for r in top_recs[:12]]
     season_taste = _compute_season_taste(current_user.user_id)
 
     return {
@@ -72,7 +73,7 @@ def get_me(current_user: SimpleNamespace = Depends(get_current_user)):
         "bio": "Exploring Philadelphia one plate at a time.",
         "member_since": "2024",
         "stats": {
-            "saved":      len(top_recs),
+            "saved":      len(saved_ids),
             "reviews":    max(5, len(top_recs) // 3),
             "cities":     1,
             "avg_rating": 4.2,
@@ -95,3 +96,38 @@ def update_taste(
     current_user: SimpleNamespace = Depends(get_current_user),
 ):
     return taste
+
+
+@router.post("/users/me/coldstart", status_code=204)
+def save_coldstart(
+    profile: dict,
+    current_user: SimpleNamespace = Depends(require_auth),
+):
+    """Persist a cold-start preference profile linked to the authenticated user."""
+    from app.database import get_conn
+    now = datetime.now(timezone.utc).isoformat()
+    with get_conn() as conn:
+        conn.execute(
+            """INSERT INTO user_preferences (user_id, coldstart_json, updated_at)
+               VALUES (?, ?, ?)
+               ON CONFLICT(user_id) DO UPDATE SET
+                 coldstart_json = excluded.coldstart_json,
+                 updated_at     = excluded.updated_at""",
+            (current_user.user_id, json.dumps(profile), now),
+        )
+        conn.commit()
+    return Response(status_code=204)
+
+
+@router.get("/users/me/coldstart")
+def get_coldstart(current_user: SimpleNamespace = Depends(require_auth)):
+    """Return the stored cold-start profile for the authenticated user, or null."""
+    from app.database import get_conn
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT coldstart_json FROM user_preferences WHERE user_id = ?",
+            (current_user.user_id,),
+        ).fetchone()
+    if row:
+        return json.loads(row["coldstart_json"])
+    return None

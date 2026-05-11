@@ -2,47 +2,45 @@ import { useState, type FormEvent } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
 
-const DEMO_ACCOUNTS = [
-  { username: "camila", label: "Camila Restrepo" },
-  { username: "daniel", label: "Daniel Park" },
-  { username: "sara",   label: "Sara Gómez" },
-];
+export default function Register() {
+  const { register } = useAuth();
+  const navigate = useNavigate();
 
-export default function Login() {
-  const { login } = useAuth();
-  const navigate  = useNavigate();
-
+  const [name,     setName]     = useState("");
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
+  const [confirm,  setConfirm]  = useState("");
   const [error,    setError]    = useState<string | null>(null);
   const [loading,  setLoading]  = useState(false);
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
     setError(null);
+    if (password !== confirm) {
+      setError("Las contraseñas no coinciden.");
+      return;
+    }
+    if (password.length < 4) {
+      setError("La contraseña debe tener al menos 4 caracteres.");
+      return;
+    }
     setLoading(true);
     try {
-      await login(username.trim(), password);
+      await register(username.trim(), password, name.trim());
       navigate("/");
-    } catch {
-      setError("Usuario o contraseña incorrectos.");
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "";
+      setError(msg.includes("409") ? "Ese nombre de usuario ya existe." : "Error al crear la cuenta.");
     } finally {
       setLoading(false);
     }
   }
 
-  async function loginAs(alias: string) {
-    setError(null);
-    setLoading(true);
-    try {
-      await login(alias, alias);
-      navigate("/");
-    } catch {
-      setError("Error al iniciar sesión.");
-    } finally {
-      setLoading(false);
-    }
-  }
+  const inputStyle = {
+    background: "#FFFFFF",
+    border: "1px solid #E7E5E4",
+    color: "#1C1917",
+  };
 
   return (
     <div
@@ -71,26 +69,31 @@ export default function Login() {
         </div>
 
         <h1 className="font-serif text-[32px] leading-tight mb-1" style={{ color: "#1C1917", letterSpacing: "-0.025em" }}>
-          Sign in
+          Create account
         </h1>
         <p className="font-sans text-[14px] mb-8" style={{ color: "#78716C" }}>
-          A good recommendation is one you can argue with.
+          Join Lantern and get personalized picks.
         </p>
 
-        {/* Form */}
         <form onSubmit={handleSubmit} className="flex flex-col gap-4 mb-6">
+          <input
+            type="text"
+            placeholder="Full name"
+            value={name}
+            onChange={e => setName(e.target.value)}
+            required
+            className="w-full font-sans text-[15px] px-4 py-3 rounded-lg outline-none"
+            style={inputStyle}
+          />
           <input
             type="text"
             placeholder="Username"
             value={username}
             onChange={e => setUsername(e.target.value)}
             required
+            autoComplete="username"
             className="w-full font-sans text-[15px] px-4 py-3 rounded-lg outline-none"
-            style={{
-              background: "#FFFFFF",
-              border: "1px solid #E7E5E4",
-              color: "#1C1917",
-            }}
+            style={inputStyle}
           />
           <input
             type="password"
@@ -98,78 +101,44 @@ export default function Login() {
             value={password}
             onChange={e => setPassword(e.target.value)}
             required
+            autoComplete="new-password"
             className="w-full font-sans text-[15px] px-4 py-3 rounded-lg outline-none"
-            style={{
-              background: "#FFFFFF",
-              border: "1px solid #E7E5E4",
-              color: "#1C1917",
-            }}
+            style={inputStyle}
           />
+          <input
+            type="password"
+            placeholder="Confirm password"
+            value={confirm}
+            onChange={e => setConfirm(e.target.value)}
+            required
+            autoComplete="new-password"
+            className="w-full font-sans text-[15px] px-4 py-3 rounded-lg outline-none"
+            style={inputStyle}
+          />
+
           {error && (
             <p className="font-sans text-[13px]" style={{ color: "#E7000B" }}>
               {error}
             </p>
           )}
+
           <button
             type="submit"
             disabled={loading}
             className="w-full font-sans text-[15px] font-medium py-3 rounded-lg transition-opacity"
-            style={{
-              background: "#1C1917",
-              color: "#FAF6F0",
-              opacity: loading ? 0.6 : 1,
-            }}
+            style={{ background: "#1C1917", color: "#FAF6F0", opacity: loading ? 0.6 : 1 }}
           >
-            {loading ? "Signing in…" : "Sign in"}
+            {loading ? "Creating account…" : "Create account"}
           </button>
         </form>
 
-        {/* Demo accounts */}
-        <div className="mb-6">
-          <div
-            className="font-sans text-[11px] uppercase tracking-[0.12em] mb-3 text-center"
-            style={{ color: "#A8A29E" }}
-          >
-            Demo accounts
-          </div>
-          <div className="flex gap-2">
-            {DEMO_ACCOUNTS.map(({ username: alias, label }) => (
-              <button
-                key={alias}
-                onClick={() => loginAs(alias)}
-                disabled={loading}
-                className="flex-1 font-sans text-[13px] py-2 rounded-lg transition-colors"
-                style={{
-                  background: "#FFFFFF",
-                  border: "1px solid #E7E5E4",
-                  color: "#1C1917",
-                }}
-              >
-                {label.split(" ")[0]}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* Register */}
-        <div className="text-center mb-3">
-          <Link
-            to="/register"
-            className="font-sans text-[13px] underline"
-            style={{ color: "#1C1917" }}
-          >
-            Create a new account
-          </Link>
-        </div>
-
-        {/* Guest */}
         <div className="text-center">
           <Link
-            to="/"
+            to="/login"
             className="font-sans text-[13px] underline"
             style={{ color: "#78716C" }}
           >
-            Continue as guest
+            Already have an account? Sign in
           </Link>
         </div>
       </div>

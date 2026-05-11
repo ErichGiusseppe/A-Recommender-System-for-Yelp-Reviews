@@ -1,3 +1,6 @@
+# data folder
+data/
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[codz]
@@ -153,6 +156,7 @@ activemq-data/
 .env
 .envrc
 .venv
+.venv_surprise
 env/
 venv/
 ENV/
@@ -219,12 +223,28 @@ __marimo__/
 # Streamlit
 .streamlit/secrets.toml
 
+# LaTeX source files (local report, not for version control)
+*.tex
+*.aux
+*.log
+*.out
+*.toc
+*.bbl
+*.blg
+*.synctex.gz
+
 # Lantern — dataset and all generated artifacts (too large / not redistributable)
 backend/data/
 backend/notebook_env/
-backend/generate_parquets.py
 backend/.env
 backend/.env.example
+
+# Taller 2 — large model files and notebooks (not redistributable, >2GB)
+taller 2/
+*.zip
+
+# macOS metadata
+.DS_Store
 
 # Frontend env overrides
 frontend/.env.local
@@ -233,3 +253,6 @@ frontend/.env.example
 
 # Local tool directories (hidden)
 .*/
+models/svdpp_model.joblib
+.DS_Store
+/models
