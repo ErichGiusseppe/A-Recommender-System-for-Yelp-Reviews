@@ -237,3 +237,5 @@ frontend/.env.example
 # Local tool directories (hidden)
 .*/
 models/svdpp_model.joblib
+.DS_Store
+/models
