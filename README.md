@@ -38,12 +38,23 @@ cd A-Recommender-System-for-Yelp-Reviews
 
 ### 2. Modelo SVD++ (requerido para generate_parquets.py y folding-in)
 
-El modelo entrenado no se sube a git por su tamaño (~664 MB). Cópialo desde la carpeta compartida del proyecto:
+El modelo entrenado no se sube a git por su tamaño (~664 MB). Descárgalo desde Google Drive:
+
+**[Descargar modelo desde Drive](https://drive.google.com/drive/folders/1_9qooLuNrQnt3MnrzO8PvMfUHRNtlpWL)**
+
+Crea la carpeta y coloca el archivo ahí:
+
+```bash
+mkdir -p backend/data/models
+# Luego mueve el archivo descargado:
+mv ~/Downloads/model_SVDpp_100.joblib backend/data/models/model_SVDpp_100.joblib
+```
+
+La estructura debe quedar así:
 
 ```
-taller 2/Modelos/Modelos_SVD_100/model_SVDpp_100.joblib
-            ↓
-backend/data/models/model_SVDpp_100.joblib
+backend/data/models/
+  model_SVDpp_100.joblib   ← aquí
 ```
 
 Sin este archivo, `generate_parquets.py` cae en modo ALS automáticamente y el folding-in queda desactivado (las recomendaciones siguen funcionando con los parquets pre-computados).
