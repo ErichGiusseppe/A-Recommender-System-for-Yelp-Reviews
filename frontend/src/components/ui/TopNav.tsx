@@ -14,6 +14,10 @@ const DEMO_ACCOUNTS = [
   { username: "camila", label: "Camila Restrepo" },
   { username: "daniel", label: "Daniel Park" },
   { username: "sara",   label: "Sara Gómez" },
+  { username: "alex",   label: "Alex Kim" },
+  { username: "maria",  label: "María Torres" },
+  { username: "carlos", label: "Carlos Méndez" },
+  { username: "sofia",  label: "Sofía Leal" },
 ];
 
 export default function TopNav() {
@@ -116,6 +120,21 @@ export default function TopNav() {
             </svg>
           </button>
 
+          {/* Add place (logged-in only) */}
+          {!isGuest && (
+            <button
+              onClick={() => navigate("/business/new")}
+              className="hidden sm:flex items-center gap-1.5 font-sans text-[13px] font-medium px-3 py-1.5 rounded-full transition-colors shrink-0"
+              style={{ background: "#C2410C", color: "#FFFFFF", border: "none" }}
+              title="Add a place"
+            >
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                <path d="M12 5v14M5 12h14" />
+              </svg>
+              Add
+            </button>
+          )}
+
           {/* Auth area */}
           {isGuest ? (
             <button
@@ -159,7 +178,7 @@ export default function TopNav() {
                       >
                         Switch account
                       </div>
-                      {DEMO_ACCOUNTS.filter(a => a.username !== user?.user_id).map(({ username, label }) => (
+                      {DEMO_ACCOUNTS.filter(a => a.label !== user?.name).map(({ username, label }) => (
                         <button
                           key={username}
                           onClick={() => switchTo(username)}

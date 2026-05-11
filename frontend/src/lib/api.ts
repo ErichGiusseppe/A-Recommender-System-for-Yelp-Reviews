@@ -41,6 +41,19 @@ async function post<T>(path: string, body: unknown): Promise<T> {
   return res.json() as Promise<T>;
 }
 
+export interface ReviewSubmit {
+  business_id: string;
+  stars: number;
+  text?: string;
+}
+
+export interface ReviewOut {
+  business_id: string;
+  stars: number;
+  text: string;
+  created_at: string;
+}
+
 export interface PaginatedBusinesses {
   items: Business[];
   total: number;
@@ -50,6 +63,7 @@ export interface RecommendationItem {
   business_id: string;
   score: number;
   cf: number;
+  cb: number;
   ctx: number;
   pop: number;
 }
@@ -65,8 +79,49 @@ export interface DemoAccount {
   avatar: string;
 }
 
+export interface RegisterPayload {
+  username: string;
+  password: string;
+  name: string;
+}
+
+export interface AuthResponse {
+  access_token: string;
+  token_type: string;
+  user: { user_id: string; name: string };
+}
+
+export interface BusinessCreatePayload {
+  name: string;
+  category: string;
+  city: string;
+  neighborhood: string;
+  address: string;
+  price: string;
+  rating: number;
+  lat?: number;
+  lng?: number;
+}
+
 export const api = {
   health: () => get<{ status: string }>("/health"),
+
+  register: (data: RegisterPayload) =>
+    post<AuthResponse>("/auth/register", data),
+
+  createBusiness: (data: BusinessCreatePayload) =>
+    post<import("../types").Business>("/businesses", data),
+
+  coldStartRecs: (params: { categories: string; stars: number; price: number; limit?: number; city?: string }) => {
+    const qs = new URLSearchParams({
+      categories: params.categories,
+      stars:      String(params.stars),
+      price:      String(params.price),
+      limit:      String(params.limit ?? 20),
+    });
+    if (params.city) qs.set("city", params.city);
+    return get<RecommendationsResponse>(`/recommendations/cold-start?${qs}`);
+  },
 
   businesses: (params?: { city?: string; limit?: number; offset?: number }) => {
     const qs = new URLSearchParams();
@@ -79,6 +134,8 @@ export const api = {
   business: (id: string) => get<Business>(`/businesses/${id}`),
 
   categories: () => get<Category[]>("/categories"),
+
+  cities: () => get<string[]>("/cities"),
 
   me: () => get<User>("/users/me"),
 
@@ -106,4 +163,9 @@ export const api = {
     if (params.limit)    qs.set("limit",    String(params.limit));
     return get<{ items: Business[]; total: number }>(`/search?${qs}`);
   },
+
+  submitReview: (data: ReviewSubmit) =>
+    post<ReviewOut>("/reviews", data),
+
+  myReviews: () => get<ReviewOut[]>("/reviews/me"),
 };

@@ -11,7 +11,7 @@ export interface Coords {
 
 export type Price = "$" | "$$" | "$$$";
 
-export type SignalKind = "cf" | "ctx" | "pop";
+export type SignalKind = "cf" | "cb" | "ctx" | "pop";
 
 export interface Business {
   id: string;
@@ -30,6 +30,7 @@ export interface Business {
   whyPicked: string;
   excerpt: string;
   cf: number;
+  cb: number;
   ctx: number;
   pop: number;
   lat?: number;
@@ -62,6 +63,7 @@ export interface TasteProfile {
 
 export interface SignalWeights {
   cf: number;
+  cb: number;
   ctx: number;
   pop: number;
 }
@@ -92,6 +94,7 @@ export interface Recommendation {
   business_id: string;
   score: number;
   cf: number;
+  cb: number;
   ctx: number;
   pop: number;
 }
@@ -101,10 +104,12 @@ export interface Explanation {
   user_id: string;
   match: number;
   cf: number;
+  cb: number;
   ctx: number;
   pop: number;
   signal_details: {
     cf_reasoning: string;
+    cb_reasoning: string;
     ctx_reasoning: string;
     pop_reasoning: string;
   };
@@ -113,4 +118,11 @@ export interface Explanation {
 export interface SeasonBar {
   label: string;
   value: number;
+}
+
+export interface ColdStartProfile {
+  moods:     string[];
+  occasion:  "traveling" | "local" | "date" | "quick";
+  timeSlot:  "morning" | "lunch" | "dinner" | "latenight";
+  price:     "$" | "$$" | "$$$" | "$$$$";
 }

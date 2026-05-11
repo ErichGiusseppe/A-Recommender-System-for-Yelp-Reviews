@@ -21,7 +21,8 @@ PHOTOS_BASE_URL = os.environ.get("PHOTOS_BASE_URL", "http://localhost:8000/photo
 
 _businesses: list[dict] = []
 _by_id: dict[str, dict] = {}
-_biz_photos: dict[str, list[str]] = {}   # business_id → [photo_id, ...]
+_biz_photos: dict[str, list[str]] = {}    # business_id → [photo_id, ...]
+_biz_reviews: dict[str, list[dict]] = {}  # business_id → [{stars, text, date}, ...]
 _loaded_from_parquet: bool = False
 
 # Multiple Unsplash photos per category — rotated by hash(business_id) so each
@@ -61,7 +62,27 @@ _CAT_IMAGES: dict[str, list[str]] = {
     "Grocery":                  ["photo-1542838132-92c53300491e","photo-1498579150354-977475b7ea0b"],
     "Restaurants":              ["photo-1517248135467-4c7edcad34c4","photo-1414235077428-338989a2e8c0","photo-1555396273-367ea4eb4db5"],
     "Food":                     ["photo-1504674900247-0877df9cc836","photo-1555396273-367ea4eb4db5","photo-1517248135467-4c7edcad34c4"],
-    "default":                  ["photo-1517248135467-4c7edcad34c4","photo-1414235077428-338989a2e8c0","photo-1555396273-367ea4eb4db5","photo-1504674900247-0877df9cc836","photo-1485963631004-f2f00b1d6606"],
+    "Fast Food":                ["photo-1568901346375-23c9450c58cd","photo-1550317138-10000687a72b","photo-1619096252214-ef06c45683e3"],
+    # Non-restaurant categories
+    "Beauty & Spas":            ["photo-1560066984-138dadb4c035","photo-1522337360788-8b13dee7a37e","photo-1487412947147-5cebf100ffc2"],
+    "Hair Salons":              ["photo-1522337360788-8b13dee7a37e","photo-1487412947147-5cebf100ffc2","photo-1560066984-138dadb4c035"],
+    "Nail Salons":              ["photo-1604654894610-df63bc536371","photo-1560066984-138dadb4c035","photo-1522337360788-8b13dee7a37e"],
+    "Shopping":                 ["photo-1483985988355-763728e1935b","photo-1555529669-e69e7aa0ba9a","photo-1441986300917-64674bd600d8"],
+    "Automotive":               ["photo-1486262715619-67b85e0b08d3","photo-1503376780353-7e6692767b70","photo-1619642751034-765dfdf7c58e"],
+    "Auto Repair":              ["photo-1486262715619-67b85e0b08d3","photo-1503376780353-7e6692767b70"],
+    "Home Services":            ["photo-1484154218962-a197022b5858","photo-1513694203232-719a280e022f","photo-1558618666-fcd25c85cd64"],
+    "Health & Medical":         ["photo-1576091160399-112ba8d25d1d","photo-1559757148-5c350d0d3c56","photo-1631815588090-d4bfec5b1ccb"],
+    "Active Life":              ["photo-1571019614242-c5c5dee9f50b","photo-1534438327276-14e5300c3a48","photo-1486218119243-13301543a1b4"],
+    "Fitness & Instruction":    ["photo-1571019614242-c5c5dee9f50b","photo-1534438327276-14e5300c3a48"],
+    "Hotels & Travel":          ["photo-1566073771259-6a8506099945","photo-1455587734955-081b22074882","photo-1520250497591-112ba2864d68"],
+    "Hotels":                   ["photo-1566073771259-6a8506099945","photo-1455587734955-081b22074882","photo-1520250497591-112ba2864d68"],
+    "Arts & Entertainment":     ["photo-1513364776144-60967b0f800f","photo-1460661419201-fd4cecdf8a8b","photo-1459749411175-04bf5292ceea"],
+    "Event Planning & Services":["photo-1530103862676-de8c9debad1d","photo-1464366400600-7168b8af9bc3","photo-1519671482749-fd09be7ccebf"],
+    "Local Services":           ["photo-1450101499163-c8848c66ca85","photo-1554774853-719586f82d77"],
+    "Pets":                     ["photo-1587300003388-59208cc962cb","photo-1548802673-380ab8ebc7b7","photo-1601758124510-52d02ddb7cbd"],
+    "Education":                ["photo-1481627834876-b7833e8f5570","photo-1456513080510-7bf3a84b82f8"],
+    "Financial Services":       ["photo-1450101499163-c8848c66ca85","photo-1554774853-719586f82d77"],
+    "default":                  ["photo-1444703686981-a3abbc4d4fe3","photo-1477959858617-67f85cf4f1df","photo-1480714378408-67cf0d13bc1b"],
 }
 
 
@@ -112,13 +133,22 @@ def _price_label(price_range) -> str:
         return "$$"
 
 
+def _safe_float(val, default: float) -> float:
+    """Return val as float, falling back to default if None/NaN/invalid."""
+    try:
+        v = float(val)
+        return default if (v != v) else v  # v != v is True only for NaN
+    except (TypeError, ValueError):
+        return default
+
+
 def _row_to_biz(row: dict) -> dict:
     cats_raw = str(row.get("categories") or "")
     cat_list = [c.strip() for c in cats_raw.split(",") if c.strip()]
     primary  = cat_list[0] if cat_list else "Restaurant"
     tags     = [c.lower().replace("&", "and").replace(" ", "-") for c in cat_list[:5]]
-    svg_x    = row.get("svg_x") or 340.0
-    svg_y    = row.get("svg_y") or 350.0
+    svg_x    = _safe_float(row.get("svg_x"), 340.0)
+    svg_y    = _safe_float(row.get("svg_y"), 350.0)
     neighborhood = str(row.get("neighborhood") or "Philadelphia")
 
     raw_city = str(row.get("city") or "Philadelphia")
@@ -137,7 +167,7 @@ def _row_to_biz(row: dict) -> dict:
         "category":     primary,
         "city":         city,
         "neighborhood": neighborhood,
-        "rating":       float(row.get("stars") or 4.0),
+        "rating":       _safe_float(row.get("stars"), 4.0),
         "reviews":      int(row.get("review_count") or 0),
         "price":        _price_label(row.get("price_range")),
         "match":        0,          # injected per-user at request time
@@ -148,11 +178,12 @@ def _row_to_biz(row: dict) -> dict:
         "whyPicked":    f"A well-regarded {primary.lower()} in {neighborhood}.",
         "excerpt":      "",
         "cf":           0,          # injected per-user at request time
-        "ctx":          0,
+        "cb":           0,          # content-based (cold-start TF-IDF similarity)
+        "ctx":          0,          # contextual (time-of-day boost)
         "pop":          0,
-        "lat":          float(row.get("latitude") or 39.9526),
-        "lng":          float(row.get("longitude") or -75.1652),
-        "coords":       {"x": float(svg_x), "y": float(svg_y)},
+        "lat":          _safe_float(row.get("latitude"), 39.9526),
+        "lng":          _safe_float(row.get("longitude"), -75.1652),
+        "coords":       {"x": svg_x, "y": svg_y},
         "hours":        "",
         "address":      str(row.get("address") or ""),
         "tags":         tags,
@@ -190,9 +221,116 @@ def _load_mock() -> None:
     logger.info("business_store: loaded %d businesses from mock", len(_businesses))
 
 
+def _load_local_businesses() -> None:
+    """Load user-created businesses from SQLite and merge into in-memory store."""
+    try:
+        from app.database import get_conn
+        with get_conn() as conn:
+            rows = conn.execute("SELECT * FROM local_businesses").fetchall()
+        count = 0
+        for row in rows:
+            biz = _row_to_biz({
+                "business_id": row["business_id"],
+                "name":        row["name"],
+                "categories":  row["category"],
+                "city":        row["city"],
+                "neighborhood": row["neighborhood"],
+                "address":     row["address"],
+                "stars":       row["rating"],
+                "review_count": 0,
+                "price_range": row["price_range"],
+                "latitude":    row["lat"],
+                "longitude":   row["lng"],
+            })
+            if biz["id"] not in _by_id:
+                _businesses.append(biz)
+                _by_id[biz["id"]] = biz
+                count += 1
+        logger.info("business_store: loaded %d local businesses from SQLite", count)
+    except Exception as exc:
+        logger.warning("Could not load local businesses from SQLite: %s", exc)
+
+
+def add_business(data: dict) -> dict:
+    """Insert a new business into SQLite and the in-memory store. Returns the full biz dict."""
+    import uuid
+    from datetime import datetime, timezone
+    from app.database import get_conn
+
+    price_map = {"$": 1, "$$": 2, "$$$": 3, "$$$$": 4}
+    price_range = price_map.get(data.get("price", "$$"), 2)
+    business_id = str(uuid.uuid4())
+    created_at = datetime.now(timezone.utc).isoformat()
+
+    with get_conn() as conn:
+        conn.execute(
+            """INSERT INTO local_businesses
+               (business_id, name, category, city, neighborhood, address,
+                rating, price_range, lat, lng, created_by, created_at)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""",
+            (
+                business_id,
+                data["name"],
+                data["category"],
+                data["city"],
+                data["neighborhood"],
+                data["address"],
+                data.get("rating", 0.0),
+                price_range,
+                data.get("lat", 39.9526),
+                data.get("lng", -75.1652),
+                data.get("created_by", "unknown"),
+                created_at,
+            ),
+        )
+        conn.commit()
+
+    biz = _row_to_biz({
+        "business_id": business_id,
+        "name":        data["name"],
+        "categories":  data["category"],
+        "city":        data["city"],
+        "neighborhood": data["neighborhood"],
+        "address":     data["address"],
+        "stars":       data.get("rating", 0.0),
+        "review_count": 0,
+        "price_range": price_range,
+        "latitude":    data.get("lat", 39.9526),
+        "longitude":   data.get("lng", -75.1652),
+    })
+    _businesses.append(biz)
+    _by_id[biz["id"]] = biz
+    return biz
+
+
+def _load_reviews() -> None:
+    global _biz_reviews
+    reviews_path = DATA_DIR / "reviews_sample.parquet"
+    if not reviews_path.exists():
+        logger.info("reviews_sample.parquet not found — run generate_reviews.py to enable review tab")
+        return
+    try:
+        import pandas as pd  # type: ignore
+        df = pd.read_parquet(reviews_path)
+        for bid, group in df.groupby("business_id"):
+            _biz_reviews[str(bid)] = [
+                {
+                    "author": f"Yelp user",
+                    "rating": float(row["stars"]),
+                    "text":   str(row["text"]),
+                }
+                for _, row in group.iterrows()
+            ]
+        logger.info("business_store: loaded reviews for %d businesses", len(_biz_reviews))
+    except Exception as exc:
+        logger.warning("Error loading reviews_sample.parquet (%s)", exc)
+
+
 def startup() -> None:
     _load_photos()     # must run before _load_parquet so gallery URLs are ready
     _load_parquet()
+    _load_reviews()
+    _load_local_businesses()
 
 
 def is_real_data() -> bool:
@@ -204,7 +342,48 @@ def get_businesses() -> list[dict]:
 
 
 def get_business(business_id: str) -> Optional[dict]:
-    return _by_id.get(business_id)
+    biz = _by_id.get(business_id)
+    if biz is None:
+        return None
+    reviews = _biz_reviews.get(business_id)
+    if reviews:
+        biz = dict(biz)
+        biz["reviewList"] = reviews
+    return biz
+
+
+def get_categories_with_images(n: int = 20) -> list[dict]:
+    """Top N categories by business count, with Unsplash cover images."""
+    from collections import Counter
+    counts: Counter = Counter(
+        biz["category"] for biz in _businesses if biz.get("category")
+    )
+    return [
+        {"name": cat, "img": _img(cat), "count": count}
+        for cat, count in counts.most_common(n)
+    ]
+
+
+def get_cities() -> list[str]:
+    """Sorted list of distinct cities present in loaded businesses."""
+    return sorted({biz["city"] for biz in _businesses if biz.get("city")})
+
+
+def get_categories_with_images(n: int = 20) -> list[dict]:
+    """Top N categories by business count, with Unsplash cover images."""
+    from collections import Counter
+    counts: Counter = Counter(
+        biz["category"] for biz in _businesses if biz.get("category")
+    )
+    return [
+        {"name": cat, "img": _img(cat), "count": count}
+        for cat, count in counts.most_common(n)
+    ]
+
+
+def get_cities() -> list[str]:
+    """Sorted list of distinct cities present in loaded businesses."""
+    return sorted({biz["city"] for biz in _businesses if biz.get("city")})
 
 
 def search_businesses(
