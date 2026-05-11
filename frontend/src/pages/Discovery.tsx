@@ -48,7 +48,7 @@ export default function Discovery() {
   const { coldStartProfile: profile, setColdStartProfile } = useAuth();
   const { data: businesses } = useBusinesses();
   const { data: categories } = useCategories();
-  const { city, neighborhood, openPicker } = useNeighborhood();
+  const { city, neighborhood, openPicker, hasChosen, setCity, setNeighborhood } = useNeighborhood();
 
   const [showWizard, setShowWizard]   = useState(false);
   const [coldPicks, setColdPicks]     = useState<Business[]>([]);
@@ -132,8 +132,26 @@ export default function Discovery() {
   // Use cold-start picks as top picks when available, fallback to default
   const top          = (profile && coldPicks.length ? coldPicks : fallbackBizs).slice(0, 4);
   const trending     = fallbackBizs.slice(4, 7);
-  const becauseLiked = fallbackBizs[0] ?? null;
-  const becauseList  = fallbackBizs.slice(1, 4);
+
+  // "Because you liked" — only for warm users with real CF signal (cf > 10 means SVD++ has
+  // interaction history; cold-start and guest users always have cf = 0).
+  const cfSorted     = [...fallbackBizs].filter(b => b.cf > 10).sort((a, b) => b.cf - a.cf);
+  const becauseLiked = cfSorted[0] ?? null;
+  const becauseList  = becauseLiked
+    ? cfSorted.filter(b => b.id !== becauseLiked.id).slice(0, 3)
+    : [];
+
+  // Hidden gems: high rating, fewest reviews (less-discovered places)
+  const hiddenGems = [...fallbackBizs]
+    .filter(b => b.rating >= 4.5)
+    .sort((a, b) => a.reviews - b.reviews)
+    .slice(0, 3);
+
+  // Best value: $ or $$ price, sorted by rating
+  const bestValue = [...fallbackBizs]
+    .filter(b => b.price === "$" || b.price === "$$")
+    .sort((a, b) => b.rating - a.rating)
+    .slice(0, 3);
 
   const hasPersonalization = profile !== null;
 
@@ -145,6 +163,8 @@ export default function Discovery() {
           onComplete={handleWizardComplete}
           onSkip={handleWizardSkip}
           initialProfile={profile}
+          showCityStep={!hasChosen}
+          onCitySelect={(c, n) => { setCity(c); if (n) setNeighborhood(n); }}
         />
       )}
 
@@ -314,8 +334,8 @@ export default function Discovery() {
           )}
         </section>
 
-        {/* Because you liked */}
-        {becauseLiked && (
+        {/* Because you liked — only rendered for warm users with real CF history */}
+        {becauseLiked && becauseList.length > 0 && (
           <section className="pb-16">
             <SectionHeader
               eyebrow="Pattern matching"
@@ -344,6 +364,38 @@ export default function Discovery() {
             {trending.map((b, i) => <TrendingCard key={b.id} rank={i + 1} biz={b} />)}
           </div>
         </section>
+
+        {/* Hidden gems */}
+        {hiddenGems.length > 0 && (
+          <section className="pb-16">
+            <SectionHeader
+              eyebrow="High rated, low profile"
+              title="Hidden gems nearby"
+              aside={`${hiddenGems.length} places · sorted by fewest reviews`}
+            />
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-5">
+              {hiddenGems.map((b, i) => (
+                <TrendingCard key={b.id} rank={i + 1} biz={b} />
+              ))}
+            </div>
+          </section>
+        )}
+
+        {/* Best value */}
+        {bestValue.length > 0 && (
+          <section className="pb-16">
+            <SectionHeader
+              eyebrow="Great quality, fair price"
+              title="Best value picks"
+              aside="$ and $$ · sorted by rating"
+            />
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-5">
+              {bestValue.map(b => (
+                <SmallCard key={b.id} biz={b} />
+              ))}
+            </div>
+          </section>
+        )}
 
         {/* Categories */}
         <section className="pb-8">

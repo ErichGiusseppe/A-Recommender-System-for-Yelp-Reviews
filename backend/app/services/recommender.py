@@ -66,7 +66,9 @@ def _load_mock_fallback() -> None:
 
     for b in businesses:
         key = f"camila|{b['id']}"
-        _explanations[key] = {"cf": b["cf"], "ctx": b["ctx"], "pop": b["pop"], "match": b["match"]}
+        _explanations[key] = {
+            "cf": b["cf"], "cb": b.get("cb", 0), "ctx": b["ctx"], "pop": b["pop"], "match": b["match"],
+        }
 
     _model_version = "mock-0.1.0"
     logger.info("Recommender: mock fallback loaded")
@@ -120,17 +122,19 @@ def _load_parquets() -> None:
             match = min(99, max(1, int(round(sc * 100))))
             _explanations[key] = {
                 "cf":    int(round(float(row["cf"]))),
+                "cb":    0,  # parquets predate the cb signal
                 "ctx":   int(round(float(row["ctx"]))),
                 "pop":   int(round(float(row["pop"]))),
                 "match": match,
             }
 
-        # Back-fill cf/ctx/pop into top_n entries
+        # Back-fill cf/cb/ctx/pop into top_n entries
         for uid, recs in _top_n.items():
             for rec in recs:
                 expl = _explanations.get(f"{uid}|{rec['business_id']}")
                 if expl:
                     rec["cf"]  = expl["cf"]
+                    rec["cb"]  = expl.get("cb", 0)
                     rec["ctx"] = expl["ctx"]
                     rec["pop"] = expl["pop"]
 
@@ -216,6 +220,31 @@ def _load_svdpp_model() -> None:
         )
     except Exception as exc:
         logger.warning("SVD++ model load failed (%s) — folding-in disabled", exc)
+
+
+# ── Warm-user vector (stored SVD++ vectors, no new ratings needed) ──────────
+
+def _get_warm_user_vector(raw_uid: str) -> "tuple[np.ndarray, float] | None":
+    """Return (u_eff, bu) for a user already in the trained SVD++ model.
+
+    u_eff = pu[u] + implicit_feedback_term  (same formula used at train time).
+    Returns None if the model is unavailable or the user is not in the trainset.
+    """
+    if not _svdpp_ok or _svdpp_model is None:
+        return None
+    ts = _svdpp_model.trainset
+    try:
+        u = ts.to_inner_uid(raw_uid)
+    except ValueError:
+        return None  # user not in trainset → fall through to cold-start
+
+    bu   = float(_svdpp_model.bu[u])
+    seen = ts.ur[u]
+    u_impl = (
+        _svdpp_model.yj[[iid for iid, _ in seen]].sum(axis=0) / np.sqrt(max(1, len(seen)))
+        if seen else np.zeros(_svdpp_model.n_factors)
+    )
+    return (_svdpp_model.pu[u] + u_impl).astype(np.float32), bu
 
 
 # ── Folding-in (Brand 2006) ─────────────────────────────────────────────────
@@ -351,9 +380,11 @@ def get_explanation(user_id: str, business_id: str) -> Optional[dict]:
         return _explanations[fallback2]
     for rec in get_recommendations(user_id, 200):
         if rec["business_id"] == business_id:
-            expl = {"cf": rec["cf"], "ctx": rec["ctx"], "pop": rec["pop"], "match": rec["match"]}
-            # Only return if at least one signal is non-zero (backfill succeeded)
-            if expl["cf"] > 0 or expl["ctx"] > 0 or expl["pop"] > 0:
+            expl = {
+                "cf": rec["cf"], "cb": rec.get("cb", 0),
+                "ctx": rec["ctx"], "pop": rec["pop"], "match": rec["match"],
+            }
+            if expl["cf"] > 0 or expl["cb"] > 0 or expl["ctx"] > 0 or expl["pop"] > 0:
                 return expl
     return None
 
@@ -432,7 +463,8 @@ def get_cold_start_recommendations(
             "score":       round(float(scores[i]), 4),
             "match":       min(99, max(1, int(round(float(scores[i]) * 100)))),
             "cf":          0,
-            "ctx":         round(float(sims[i]) * 100),
+            "cb":          round(float(sims[i]) * 100),
+            "ctx":         0,
             "pop":         round(float(pop[i]) * 100),
         }
         for i in top_idx
@@ -472,17 +504,25 @@ def inject_scores(
     user_ratings: "dict[str, float] | None" = None,
     cold_start_scores: "dict[str, float] | None" = None,
 ) -> list[dict]:
-    """Attach match/cf/ctx/pop and apply contextual re-ranking by time of day.
+    """Attach match/cf/cb/ctx/pop and apply contextual re-ranking.
 
-    Score priority (highest → lowest):
-      1. Folding-in  — warm user with new ratings (real-time SVD++ update)
-      2. Personal    — pre-computed SVD++ top-N from parquet
-      3. Cold-start  — content model scores for new users with wizard profile
-      4. Popularity  — pre-computed new_visitor|city fallback
+    Four semantically distinct signals (Burke 2002):
+      cf  — collaborative filtering (SVD++ latent factors)
+      cb  — content-based filtering (TF-IDF cosine similarity, wizard profile)
+      ctx — contextual signal (time-of-day boost from contextual_scorer)
+      pop — popularity prior (normalised review count / velocity)
+
+    Priority / user state (highest → lowest):
+      1. Folding-in    — warm user, new ratings since training
+      2. Warm SVD++    — warm user, vectorised real-time over ALL businesses
+         2b. Transition — warm user, 1-4 ratings: CF-CB progressive blend
+      3. Cold-start    — new user (not in SVD++ model), wizard profile → pure CB
+      4. City fallback — anonymous / no profile → new_visitor|city precomputed
+      5. Raw popularity — last resort
     """
     from .contextual_scorer import contextual_rerank
 
-    is_guest = user_id in ("new_visitor", "default") or not user_id
+    is_guest      = user_id in ("new_visitor", "default") or not user_id
     personal_recs = [] if is_guest else _top_n.get(user_id, [])
 
     city_key      = f"new_visitor|{city}" if city else None
@@ -494,11 +534,11 @@ def inject_scores(
             or []
         )
     }
-    recs_by_id: dict = {r["business_id"]: r for r in personal_recs}
-
+    recs_by_id: dict  = {r["business_id"]: r for r in personal_recs}
     rated_ids: set[str] = set(user_ratings.keys()) if user_ratings else set()
+    n_ratings: int      = len(rated_ids)
 
-    # Folding-in: re-score with updated latent vector derived from new ratings
+    # ── Priority 1: folding-in (warm user, new ratings) ──────────────────────
     folded: "dict[str, float] | None" = None
     if user_ratings and not is_guest:
         fi = _folding_in(user_id, user_ratings)
@@ -507,57 +547,103 @@ def inject_scores(
             unrated_ids = [b["id"] for b in businesses if b["id"] not in rated_ids]
             raw_scores  = _svdpp_batch_pu(p_u_new, bu, unrated_ids)
             norm        = (raw_scores - 1.0) / 4.0
-            folded      = dict(zip(unrated_ids, norm.tolist()))
+            folded      = dict(zip(unrated_ids, np.clip(norm, 0.0, 1.0).tolist()))
+
+    # ── Priority 2: warm SVD++ vectorised over ALL businesses (~2ms) ─────────
+    warm_cf: "dict[str, float]" = {}
+    if not is_guest and folded is None:
+        uv = _get_warm_user_vector(user_id)
+        if uv is not None:
+            u_eff, bu_warm = uv
+            all_iids = [b["id"] for b in businesses]
+            raw_cf   = _svdpp_batch_pu(u_eff, bu_warm, all_iids)
+            cf_norm  = np.clip((raw_cf - 1.0) / 4.0, 0.0, 1.0)
+            warm_cf  = dict(zip(all_iids, cf_norm.tolist()))
+            logger.debug("Warm SVD++ scored %d businesses for %s", len(warm_cf), user_id)
+
+    # Transition zone: warm user 1-4 ratings + cold-start profile available.
+    # alpha blends from pure-CB (α=0) to pure-CF (α=1) as ratings accumulate.
+    # Follows progressive profiling pattern (Schein et al. 2002).
+    in_transition = bool(warm_cf and cold_start_scores and 0 < n_ratings < 5)
+    alpha = (n_ratings / 5.0) if in_transition else 0.0
 
     result = []
     for b in businesses:
         if b["id"] in rated_ids:
             continue
         biz = dict(b)
+        bid = biz["id"]
 
         if folded is not None:
-            # Priority 1: folding-in
-            score        = folded.get(biz["id"], 0.0)
-            match        = min(99, max(1, int(round(score * 100))))
-            biz["match"] = match
-            biz["cf"]    = match
+            # ── 1. Folding-in ────────────────────────────────────────────────
+            score        = folded.get(bid, 0.0)
+            pop_raw      = _biz_pop_cb.get(bid, 0.0)
+            final        = 0.75 * score + 0.15 * pop_raw
+            biz["match"] = min(99, max(1, round(final * 100)))
+            biz["cf"]    = round(score   * 100)
+            biz["cb"]    = 0
             biz["ctx"]   = 0
-            biz["pop"]   = 0
+            biz["pop"]   = round(pop_raw * 100)
+
+        elif in_transition:
+            # ── 2b. Transition: progressive CF↑ CB↓ blend ───────────────────
+            cf_raw  = warm_cf.get(bid, 0.0)
+            cb_raw  = cold_start_scores.get(bid, 0.0)  # type: ignore[union-attr]
+            pop_raw = _biz_pop_cb.get(bid, 0.0)
+            # Weighted blend: alpha drives the shift from CB to CF
+            blended_cf = alpha * cf_raw
+            blended_cb = (1.0 - alpha) * cb_raw
+            final      = 0.60 * (blended_cf + blended_cb) + 0.15 * pop_raw
+            biz["match"] = min(99, max(1, round(final * 100)))
+            biz["cf"]    = round(blended_cf * 100)
+            biz["cb"]    = round(blended_cb * 100)
+            biz["ctx"]   = 0
+            biz["pop"]   = round(pop_raw    * 100)
+
+        elif warm_cf:
+            # ── 2. Full warm SVD++ (Cascade Stage 1) ────────────────────────
+            cf_raw  = warm_cf.get(bid, 0.0)
+            pop_raw = _biz_pop_cb.get(bid, 0.0)
+            rec     = recs_by_id.get(bid)
+            ctx_raw = (rec["ctx"] / 100.0) if rec and rec.get("ctx") else 0.0
+            final        = 0.60 * cf_raw + 0.25 * ctx_raw + 0.15 * pop_raw
+            biz["match"] = min(99, max(1, round(final * 100)))
+            biz["cf"]    = round(cf_raw  * 100)
+            biz["cb"]    = 0
+            biz["ctx"]   = round(ctx_raw * 100)
+            biz["pop"]   = round(pop_raw * 100)
+
+        elif cold_start_scores is not None and bid in cold_start_scores:
+            # ── 3. Pure cold-start — Switching component (new/anonymous user)─
+            # cb carries TF-IDF content similarity; ctx stays 0 (no user history)
+            cb_raw  = cold_start_scores[bid]
+            pop_raw = _biz_pop_cb.get(bid, 0.0)
+            final        = 0.75 * cb_raw + 0.15 * pop_raw
+            biz["match"] = min(99, max(1, round(final * 100)))
+            biz["cf"]    = 0
+            biz["cb"]    = round(cb_raw  * 100)
+            biz["ctx"]   = 0
+            biz["pop"]   = round(pop_raw * 100)
+
         else:
-            rec = recs_by_id.get(biz["id"])
+            # ── 4. City popularity fallback ──────────────────────────────────
+            rec = city_fallback.get(bid)
             if rec:
-                # Priority 2: personal SVD++ pre-computed
                 biz["match"] = rec["match"]
-                biz["cf"]    = rec["cf"]
-                biz["ctx"]   = rec["ctx"]
-                biz["pop"]   = rec["pop"]
-            elif cold_start_scores is not None and biz["id"] in cold_start_scores:
-                # Priority 3: content model cold-start (wizard profile)
-                score        = cold_start_scores[biz["id"]]
-                match        = min(99, max(1, int(round(score * 100))))
-                biz["match"] = match
-                biz["cf"]    = 0
-                biz["ctx"]   = match
-                biz["pop"]   = 0
+                biz["cf"]    = rec.get("cf",  0)
+                biz["cb"]    = 0
+                biz["ctx"]   = rec.get("ctx", 0)
+                biz["pop"]   = rec.get("pop", 0)
             else:
-                # Priority 4: city popularity fallback (new_visitor|city precomputed)
-                rec = city_fallback.get(biz["id"])
-                if rec:
-                    biz["match"] = rec["match"]
-                    biz["cf"]    = rec["cf"]
-                    biz["ctx"]   = rec["ctx"]
-                    biz["pop"]   = rec["pop"]
-                else:
-                    # Priority 5: raw popularity from content model.
-                    # Covers any business in business_meta.parquet that isn't in any
-                    # precomputed list — e.g. Beauty & Spas, Shopping, Automotive.
-                    raw_pop = _biz_pop_cb.get(biz["id"])
-                    if raw_pop:
-                        pop_pct      = round(raw_pop * 100)
-                        biz["match"] = max(1, pop_pct)
-                        biz["cf"]    = 0
-                        biz["ctx"]   = 0
-                        biz["pop"]   = pop_pct
+                # ── 5. Raw popularity — last resort ──────────────────────────
+                raw_pop = _biz_pop_cb.get(bid)
+                if raw_pop:
+                    pop_pct      = round(raw_pop * 100)
+                    biz["match"] = max(1, pop_pct)
+                    biz["cf"]    = 0
+                    biz["cb"]    = 0
+                    biz["ctx"]   = 0
+                    biz["pop"]   = pop_pct
 
         result.append(biz)
 

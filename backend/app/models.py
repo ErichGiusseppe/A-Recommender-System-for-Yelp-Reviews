@@ -30,6 +30,7 @@ class BusinessModel(BaseModel):
     whyPicked: str
     excerpt: str
     cf: int
+    cb: int = 0
     ctx: int
     pop: int
     lat: float = 39.9526
@@ -87,12 +88,14 @@ class RecommendationModel(BaseModel):
     business_id: str
     score: float
     cf: int
+    cb: int = 0
     ctx: int
     pop: int
 
 
 class SignalDetailsModel(BaseModel):
     cf_reasoning: str
+    cb_reasoning: str = ""
     ctx_reasoning: str
     pop_reasoning: str
 
@@ -102,6 +105,7 @@ class ExplanationModel(BaseModel):
     user_id: str
     match: int
     cf: int
+    cb: int = 0
     ctx: int
     pop: int
     signal_details: SignalDetailsModel

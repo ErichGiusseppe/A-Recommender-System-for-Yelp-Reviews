@@ -2,9 +2,12 @@ import { useState, useEffect } from "react";
 import type { ColdStartProfile } from "../types";
 import type { Category } from "../types";
 import { api } from "../lib/api";
+import { CITY_CENTERS, CITY_NEIGHBORHOODS } from "../contexts/NeighborhoodContext";
 
 export type { ColdStartProfile };
 export const COLD_START_KEY = "lantern_coldstart";
+
+const CITY_NAMES = Object.keys(CITY_CENTERS);
 
 // ── Static step data (occasion / time / price are UX labels, not dataset values) ─
 
@@ -122,26 +125,43 @@ interface Props {
   onSkip:          () => void;
   /** Pass the existing profile to pre-fill selections (returning user check-in). */
   initialProfile?: ColdStartProfile | null;
+  /** Show city + neighborhood as step 0 (first-time visitors with no city saved). */
+  showCityStep?:   boolean;
+  /** Called with chosen city and optional neighborhood when wizard completes. */
+  onCitySelect?:   (city: string, neighborhood: string) => void;
 }
 
-export default function ColdStartWizard({ onComplete, onSkip, initialProfile }: Props) {
-  const isCheckin = initialProfile != null;
+export default function ColdStartWizard({
+  onComplete,
+  onSkip,
+  initialProfile,
+  showCityStep = false,
+  onCitySelect,
+}: Props) {
+  const isCheckin  = initialProfile != null;
+  const offset     = showCityStep ? 1 : 0;
+  const totalSteps = 4 + offset;
 
-  const [step,       setStep]       = useState(0);
-  const [moods,      setMoods]      = useState<string[]>(initialProfile?.moods ?? []);
-  const [occasion,   setOccasion]   = useState<ColdStartProfile["occasion"] | "">(initialProfile?.occasion ?? "");
-  const [timeSlot,   setTimeSlot]   = useState<ColdStartProfile["timeSlot"] | "">(initialProfile?.timeSlot ?? "");
-  const [price,      setPrice]      = useState<ColdStartProfile["price"] | "">(initialProfile?.price ?? "");
-  const [categories, setCategories] = useState<Category[]>([]);
-  const [catsLoading, setCatsLoading] = useState(true);
+  const [step,               setStep]               = useState(0);
+  const [cityChoice,         setCityChoice]         = useState("");
+  const [neighborhoodChoice, setNeighborhoodChoice] = useState("");
+  const [moods,              setMoods]              = useState<string[]>(initialProfile?.moods ?? []);
+  const [occasion,           setOccasion]           = useState<ColdStartProfile["occasion"] | "">(initialProfile?.occasion ?? "");
+  const [timeSlot,           setTimeSlot]           = useState<ColdStartProfile["timeSlot"] | "">(initialProfile?.timeSlot ?? "");
+  const [price,              setPrice]              = useState<ColdStartProfile["price"] | "">(initialProfile?.price ?? "");
+  const [categories,         setCategories]         = useState<Category[]>([]);
+  const [catsLoading,        setCatsLoading]        = useState(true);
 
-  // Fetch real categories from the dataset on mount
   useEffect(() => {
     api.categories()
       .then(setCategories)
-      .catch(() => {/* keep empty, skeleton stays until resolved */})
+      .catch(() => {})
       .finally(() => setCatsLoading(false));
   }, []);
+
+  const cityHoods = cityChoice && CITY_NEIGHBORHOODS[cityChoice]
+    ? Object.keys(CITY_NEIGHBORHOODS[cityChoice])
+    : [];
 
   function toggleMood(name: string) {
     setMoods(prev =>
@@ -152,15 +172,18 @@ export default function ColdStartWizard({ onComplete, onSkip, initialProfile }: 
   }
 
   function canNext(): boolean {
-    if (step === 0) return moods.length > 0;
-    if (step === 1) return occasion !== "";
-    if (step === 2) return timeSlot !== "";
-    if (step === 3) return price !== "";
+    if (showCityStep && step === 0) return cityChoice !== "";
+    const s = step - offset;
+    if (s === 0) return moods.length > 0;
+    if (s === 1) return occasion !== "";
+    if (s === 2) return timeSlot !== "";
+    if (s === 3) return price !== "";
     return false;
   }
 
   function handleNext() {
-    if (step < 3) { setStep(s => s + 1); return; }
+    if (step < totalSteps - 1) { setStep(s => s + 1); return; }
+    if (showCityStep) onCitySelect?.(cityChoice, neighborhoodChoice);
     onComplete({
       moods,
       occasion: occasion as ColdStartProfile["occasion"],
@@ -171,7 +194,9 @@ export default function ColdStartWizard({ onComplete, onSkip, initialProfile }: 
 
   const STEP_TITLES = isCheckin
     ? ["What are you up for today?", "What's the plan?", "When are you heading out?", "Budget for today?"]
-    : ["What are you looking for?",  "What's the situation?", "When are you heading out?", "How does the bill usually look?"];
+    : showCityStep
+    ? ["Where are you?", "What are you looking for?", "What's the situation?", "When are you heading out?", "How does the bill usually look?"]
+    : ["What are you looking for?", "What's the situation?", "When are you heading out?", "How does the bill usually look?"];
 
   const STEP_SUBS = isCheckin
     ? [
@@ -179,6 +204,14 @@ export default function ColdStartWizard({ onComplete, onSkip, initialProfile }: 
         "Any different vibe today?",
         "We'll tune what's shown right now.",
         "Same as usual, or treating yourself?",
+      ]
+    : showCityStep
+    ? [
+        "We'll filter picks to your city.",
+        "Pick up to three — we'll tune your picks.",
+        "Sets how selective we get.",
+        "We'll weigh the moment into your picks.",
+        "We'll respect it.",
       ]
     : [
         "Pick up to three — we'll tune your picks.",
@@ -223,7 +256,7 @@ export default function ColdStartWizard({ onComplete, onSkip, initialProfile }: 
             </button>
           </div>
 
-          <StepDots current={step} total={4} />
+          <StepDots current={step} total={totalSteps} />
 
           <h2
             className="font-serif text-[26px] leading-tight mb-1"
@@ -239,8 +272,68 @@ export default function ColdStartWizard({ onComplete, onSkip, initialProfile }: 
         {/* Step body */}
         <div className="px-8 pb-8">
 
-          {/* Step 0: Categories from dataset (multi-select, up to 3) */}
-          {step === 0 && (
+          {/* Step 0: City + optional neighborhood (first-time only) */}
+          {showCityStep && step === 0 && (
+            <div className="mb-6">
+              <div className="grid grid-cols-2 gap-2 mb-4">
+                {CITY_NAMES.map(c => (
+                  <button
+                    key={c}
+                    type="button"
+                    onClick={() => { setCityChoice(c); setNeighborhoodChoice(""); }}
+                    className="text-left px-4 py-3 rounded-xl transition-all duration-150"
+                    style={{
+                      background: cityChoice === c ? "#1C1917" : "#FFFFFF",
+                      color:      cityChoice === c ? "#FAF6F0" : "#1C1917",
+                      border:     cityChoice === c ? "1px solid #1C1917" : "1px solid #E7E5E4",
+                    }}
+                  >
+                    <div className="font-sans text-[14px] font-medium">{c}</div>
+                    <div
+                      className="font-sans text-[11px] mt-0.5"
+                      style={{ color: cityChoice === c ? "rgba(250,246,240,0.65)" : "#A8A29E" }}
+                    >
+                      {CITY_CENTERS[c].label.split(", ")[1]}
+                    </div>
+                  </button>
+                ))}
+              </div>
+
+              {cityHoods.length > 0 && (
+                <>
+                  <p
+                    className="font-sans text-[11px] uppercase tracking-[0.1em] mb-2"
+                    style={{ color: "#78716C" }}
+                  >
+                    Neighborhood{" "}
+                    <span style={{ textTransform: "none", letterSpacing: 0, color: "#A8A29E" }}>
+                      (optional)
+                    </span>
+                  </p>
+                  <div className="grid grid-cols-2 gap-2">
+                    {cityHoods.map(n => (
+                      <button
+                        key={n}
+                        type="button"
+                        onClick={() => setNeighborhoodChoice(prev => prev === n ? "" : n)}
+                        className="text-left px-4 py-2.5 rounded-xl font-sans text-[13px] transition-all duration-150"
+                        style={{
+                          background: neighborhoodChoice === n ? "#1C1917" : "#FFFFFF",
+                          color:      neighborhoodChoice === n ? "#FAF6F0" : "#1C1917",
+                          border:     neighborhoodChoice === n ? "1px solid #1C1917" : "1px solid #E7E5E4",
+                        }}
+                      >
+                        {n}
+                      </button>
+                    ))}
+                  </div>
+                </>
+              )}
+            </div>
+          )}
+
+          {/* Categories step */}
+          {step === offset && (
             catsLoading ? <CategorySkeleton /> : (
               <div
                 className="grid grid-cols-2 gap-2.5 mb-6 overflow-y-auto"
@@ -260,8 +353,8 @@ export default function ColdStartWizard({ onComplete, onSkip, initialProfile }: 
             )
           )}
 
-          {/* Step 1: Occasion */}
-          {step === 1 && (
+          {/* Occasion step */}
+          {step === 1 + offset && (
             <div className="grid grid-cols-2 gap-2.5 mb-6">
               {OCCASIONS.map(o => (
                 <Chip
@@ -276,8 +369,8 @@ export default function ColdStartWizard({ onComplete, onSkip, initialProfile }: 
             </div>
           )}
 
-          {/* Step 2: Time slot */}
-          {step === 2 && (
+          {/* Time slot step */}
+          {step === 2 + offset && (
             <div className="grid grid-cols-2 gap-2.5 mb-6">
               {TIME_SLOTS.map(t => (
                 <Chip
@@ -292,8 +385,8 @@ export default function ColdStartWizard({ onComplete, onSkip, initialProfile }: 
             </div>
           )}
 
-          {/* Step 3: Price */}
-          {step === 3 && (
+          {/* Price step */}
+          {step === 3 + offset && (
             <div className="grid grid-cols-4 gap-2 mb-6">
               {PRICES.map(p => (
                 <button
@@ -342,7 +435,7 @@ export default function ColdStartWizard({ onComplete, onSkip, initialProfile }: 
                 opacity:    canNext() ? 1 : 0.35,
               }}
             >
-              {step === 3 ? "Show me places →" : "Continue"}
+              {step === totalSteps - 1 ? "Show me places →" : "Continue"}
             </button>
           </div>
         </div>

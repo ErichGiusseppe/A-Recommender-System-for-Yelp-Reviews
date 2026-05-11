@@ -178,7 +178,8 @@ def _row_to_biz(row: dict) -> dict:
         "whyPicked":    f"A well-regarded {primary.lower()} in {neighborhood}.",
         "excerpt":      "",
         "cf":           0,          # injected per-user at request time
-        "ctx":          0,
+        "cb":           0,          # content-based (cold-start TF-IDF similarity)
+        "ctx":          0,          # contextual (time-of-day boost)
         "pop":          0,
         "lat":          _safe_float(row.get("latitude"), 39.9526),
         "lng":          _safe_float(row.get("longitude"), -75.1652),

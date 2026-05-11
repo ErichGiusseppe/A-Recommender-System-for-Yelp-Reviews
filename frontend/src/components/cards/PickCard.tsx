@@ -2,6 +2,7 @@ import { useNavigate } from "react-router-dom";
 import type { Business } from "../../types";
 import MatchBadge from "../ui/MatchBadge";
 import Rating from "../ui/Rating";
+import ReasonPill from "../ui/ReasonPill";
 
 interface PickCardProps {
   biz: Business;
@@ -29,6 +30,9 @@ export default function PickCard({ biz }: PickCardProps) {
         />
         <div className="absolute top-3 left-3">
           <MatchBadge value={biz.match} />
+        </div>
+        <div className="absolute bottom-3 left-3">
+          <ReasonPill cf={biz.cf} ctx={biz.ctx} pop={biz.pop} />
         </div>
       </div>
       <div className="p-4">

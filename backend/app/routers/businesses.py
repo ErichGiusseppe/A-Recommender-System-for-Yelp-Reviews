@@ -112,18 +112,8 @@ def get_business(
         raise HTTPException(status_code=404, detail=f"Business '{business_id}' not found")
     biz = dict(biz)
 
-    # Priority 1: personal SVD++ explanation from precomputed parquets
-    expl = recommender.get_explanation(user_id, business_id)
-    if expl:
-        biz["match"] = expl["match"]
-        biz["cf"]    = expl["cf"]
-        biz["ctx"]   = expl["ctx"]
-        biz["pop"]   = expl["pop"]
-        return biz
-
-    # Priority 2: cold-start content model using the user's wizard profile.
-    # Applies to any logged-in user who completed the wizard, even demo users —
-    # because the wizard tells us what they're looking for tonight.
+    # Use the same inject_scores() path as the list page so the pill and the
+    # ExplanationCard always reflect the same signal values.
     cold_start_scores: dict[str, float] | None = None
     if not current_user.is_guest:
         cs_profile = _load_cold_start_profile(user_id)
@@ -134,18 +124,18 @@ def get_business(
     city = biz.get("city")
     scored = recommender.inject_scores(
         [biz], user_id, city=city, hour=datetime.now().hour,
-        user_ratings=None,  # Don't filter rated businesses in Detail view
+        user_ratings=None,  # Don't filter the viewed business out
         cold_start_scores=cold_start_scores,
     )
     if scored and scored[0].get("match", 0) > 0:
         return scored[0]
 
-    # Priority 3: raw popularity — honest fallback when there's no personal signal.
-    # CF=0 (no collaborative data), pop = normalized review count from content model.
+    # Last resort: raw popularity when inject_scores has no signal at all.
     expl = recommender.get_popularity_score(business_id)
     if expl:
         biz["match"] = expl["match"]
         biz["cf"]    = expl["cf"]
+        biz["cb"]    = 0
         biz["ctx"]   = expl["ctx"]
         biz["pop"]   = expl["pop"]
 

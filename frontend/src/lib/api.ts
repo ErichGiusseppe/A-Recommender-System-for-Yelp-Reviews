@@ -63,6 +63,7 @@ export interface RecommendationItem {
   business_id: string;
   score: number;
   cf: number;
+  cb: number;
   ctx: number;
   pop: number;
 }

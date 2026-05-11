@@ -115,7 +115,7 @@ export function NeighborhoodProvider({ children }: { children: ReactNode }) {
     const n = localStorage.getItem(HOOD_KEY) ?? "";
     return n && c && CITY_NEIGHBORHOODS[c]?.[n] ? n : "";
   });
-  const [showPicker, setPicker] = useState(() => !localStorage.getItem(CITY_KEY));
+  const [showPicker, setPicker] = useState(false);
 
   function setCity(c: string) {
     _setCity(c);
