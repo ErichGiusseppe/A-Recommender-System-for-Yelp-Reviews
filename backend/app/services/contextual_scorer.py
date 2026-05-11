@@ -1,79 +1,56 @@
 """
-Contextual re-ranking — ported from notebooks/03_contexto.ipynb.
+Contextual scoring — time-of-day relevance for business category tags.
 
-Applied at request time on pre-computed SVD++ top-N candidates.
-Tags in business dicts use hyphen-separated lowercase (e.g. "coffee-&-tea").
+CTX_SCORES mirrors the frontend CTX_BOOSTS table (Explain.tsx / ExplanationCard.tsx)
+so the signal value shown in the UI matches what the backend used to compute the score.
+Values are on a 0-100 scale; live_ctx_score() normalises to [0, 1] for formulas.
 """
 from __future__ import annotations
 
-TIME_CONTEXT: dict[str, dict] = {
+CTX_SCORES: dict[str, dict[str, int]] = {
     "morning": {
-        "boost_categories": {
-            "breakfast-and-brunch": 1.5, "coffee-and-tea": 1.5, "cafes": 1.4,
-            "bakeries": 1.4, "bagels": 1.3, "donuts": 1.3,
-            "juice-bars-and-smoothies": 1.2,
-        }
+        "breakfast-and-brunch": 85, "coffee-and-tea": 90, "cafes": 80,
+        "bakeries": 75, "donuts": 70, "bagels": 70, "juice-bars-and-smoothies": 65,
     },
     "lunch": {
-        "boost_categories": {
-            "restaurants": 1.2, "sandwiches": 1.4, "salad": 1.3, "soup": 1.2,
-            "fast-food": 1.2, "food-trucks": 1.3, "tacos": 1.3, "poke": 1.3,
-            "sushi-bars": 1.2,
-        }
+        "sandwiches": 80, "fast-food": 70, "food-trucks": 75, "tacos": 75,
+        "salad": 72, "soup": 68, "poke": 72, "sushi-bars": 70,
     },
     "afternoon": {
-        "boost_categories": {
-            "coffee-and-tea": 1.4, "cafes": 1.3, "desserts": 1.4,
-            "ice-cream-and-frozen-yogurt": 1.4, "bakeries": 1.2,
-            "bubble-tea": 1.3, "juice-bars-and-smoothies": 1.2,
-        }
+        "coffee-and-tea": 80, "cafes": 75, "desserts": 75,
+        "ice-cream-and-frozen-yogurt": 75, "bakeries": 68,
+        "bubble-tea": 72, "juice-bars-and-smoothies": 65,
     },
     "dinner": {
-        "boost_categories": {
-            "restaurants": 1.2, "italian": 1.3, "sushi-bars": 1.3,
-            "japanese": 1.2, "mexican": 1.2, "thai": 1.2, "steakhouses": 1.4,
-            "seafood": 1.3, "mediterranean": 1.2, "pizza": 1.2,
-            "barbeque": 1.3, "french": 1.3,
-        }
+        "italian": 80, "steakhouses": 85, "seafood": 80, "pizza": 72,
+        "sushi-bars": 78, "mediterranean": 75, "japanese": 72, "mexican": 70,
+        "thai": 70, "barbeque": 78, "french": 78,
     },
-    "late_night": {
-        "boost_categories": {
-            "pizza": 1.5, "fast-food": 1.4, "bars": 1.4, "pubs": 1.3,
-            "sports-bars": 1.3, "lounges": 1.2, "food-trucks": 1.2,
-            "diners": 1.3,
-        }
+    "latenight": {
+        "pizza": 85, "bars": 80, "fast-food": 72, "diners": 78,
+        "pubs": 75, "lounges": 70, "sports-bars": 72,
     },
 }
 
 
 def get_time_bucket(hour: int) -> str:
-    if 6 <= hour < 11:  return "morning"
+    if 6  <= hour < 11: return "morning"
     if 11 <= hour < 15: return "lunch"
     if 15 <= hour < 18: return "afternoon"
     if 18 <= hour < 23: return "dinner"
-    return "late_night"
+    return "latenight"
 
 
-def context_score_by_hour(tags: list[str], hour: int) -> float:
-    """Return the highest time-based category boost [1.0–1.5] for a business."""
-    boost_dict = TIME_CONTEXT[get_time_bucket(hour)]["boost_categories"]
-    boost = 1.0
+def live_ctx_score(tags: list[str], hour: int) -> float:
+    """Return normalised [0, 1] contextual score from business tags and current hour.
+
+    0 = no time-of-day relevance, 1 = perfect fit (e.g. coffee shop at 8 am).
+    Designed to be used as the CTX term in the hybrid formula:
+        score = 0.60·CF + 0.25·CTX + 0.15·POP
+    """
+    scores = CTX_SCORES.get(get_time_bucket(hour), {})
+    best = 0
     for tag in tags:
-        if tag in boost_dict:
-            boost = max(boost, boost_dict[tag])
-    return boost
-
-
-def contextual_rerank(businesses: list[dict], hour: int) -> list[dict]:
-    """
-    Re-sort businesses using time-of-day category boosts.
-
-    The boost is used only for ranking order — match is kept at its model-computed
-    value so it stays consistent with cf/ctx/pop in the ExplanationCard.
-    """
-    def sort_key(b: dict) -> tuple:
-        tags  = b.get("tags") or []
-        boost = context_score_by_hour(tags, hour)
-        return (-round(b.get("match", 50) * boost), -b.get("rating", 0))
-
-    return sorted(businesses, key=sort_key)
+        if tag in scores:
+            best = max(best, scores[tag])
+    return best / 100.0

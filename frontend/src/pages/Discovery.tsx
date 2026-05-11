@@ -220,13 +220,6 @@ export default function Discovery() {
               >
                 Browse all recommendations
               </button>
-              <button
-                onClick={() => navigate("/explain")}
-                className="font-sans text-[13px] px-5 py-2.5 rounded-full transition-all hover:-translate-y-[2px]"
-                style={{ color: "#1C1917", border: "1px solid #E7E5E4", background: "#FFFFFF" }}
-              >
-                How we recommend →
-              </button>
               {/* Personalize / reset */}
               <button
                 onClick={resetProfile}

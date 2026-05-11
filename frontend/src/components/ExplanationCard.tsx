@@ -1,5 +1,4 @@
 import { useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
 import type { Business } from "../types";
 import CategoryDot from "./ui/CategoryDot";
 
@@ -107,7 +106,6 @@ const TECHNICAL_LINES = {
 // ── Component ────────────────────────────────────────────────────────────────
 
 export default function ExplanationCard({ b }: ExplanationCardProps) {
-  const navigate = useNavigate();
   const [feedback, setFeedback]     = useState<"up" | "down" | null>(null);
   const [technical, setTechnical]   = useState(false);
 
@@ -275,13 +273,6 @@ export default function ExplanationCard({ b }: ExplanationCardProps) {
             }}
           >
             {technical ? "⚙ Technical" : "⚙ How it works"}
-          </button>
-          <button
-            onClick={() => navigate(`/explain/${b.id}`)}
-            className="font-sans text-[12px] hover:underline"
-            style={{ color: "#C2410C", fontWeight: 500 }}
-          >
-            Adjust →
           </button>
         </div>
       </div>
