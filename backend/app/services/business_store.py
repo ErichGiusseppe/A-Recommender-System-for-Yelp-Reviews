@@ -6,24 +6,30 @@ from __future__ import annotations
 
 import json
 import logging
-import os
-from pathlib import Path
+import uuid
+from datetime import datetime, timezone
 from typing import Optional
+
+from app.config import settings
+from app.database import get_conn
 
 logger = logging.getLogger(__name__)
 
-DATA_DIR = Path(__file__).parent.parent.parent / "data"
-MOCK_DIR = DATA_DIR / "mock"
-PHOTOS_JSON = DATA_DIR / "real" / "photos" / "photos.json"
-
-# Base URL for serving Yelp photos (override via env var for Cloud Run deploy)
-PHOTOS_BASE_URL = os.environ.get("PHOTOS_BASE_URL", "http://localhost:8000/photos")
+DATA_DIR        = settings.DATA_DIR
+MOCK_DIR        = settings.MOCK_DIR
+PHOTOS_JSON     = settings.PHOTOS_JSON
+PHOTOS_BASE_URL = settings.PHOTOS_BASE_URL
 
 _businesses: list[dict] = []
 _by_id: dict[str, dict] = {}
 _biz_photos: dict[str, list[str]] = {}    # business_id → [photo_id, ...]
 _biz_reviews: dict[str, list[dict]] = {}  # business_id → [{stars, text, date}, ...]
+_biz_excerpts: dict[str, str] = {}        # business_id → top-voted review snippet
 _loaded_from_parquet: bool = False
+
+# Derived caches — built once at startup from _businesses
+_categories_cache: list[dict] = []
+_cities_cache: list[str] = []
 
 # Multiple Unsplash photos per category — rotated by hash(business_id) so each
 # restaurant gets a distinct image even within the same category.
@@ -112,7 +118,10 @@ def _load_photos() -> None:
 
 def _pick_photo(category: str, business_id: str) -> str:
     options = _CAT_IMAGES.get(category) or _CAT_IMAGES["default"]
-    return options[abs(hash(business_id)) % len(options)]
+    # Use sum of char codes instead of hash() — deterministic across restarts
+    # (Python's hash() changes with PYTHONHASHSEED, which is random by default)
+    index = sum(ord(c) for c in business_id) % len(options)
+    return options[index]
 
 
 def _img(category: str, business_id: str = "") -> str:
@@ -133,6 +142,17 @@ def _price_label(price_range) -> str:
         return "$$"
 
 
+def _price_is_known(price_range) -> bool:
+    """True only when the dataset actually has price information for this business."""
+    if price_range is None:
+        return False
+    try:
+        v = float(str(price_range))
+        return v == v  # NaN != NaN, so this is False for NaN
+    except (TypeError, ValueError):
+        return False
+
+
 def _safe_float(val, default: float) -> float:
     """Return val as float, falling back to default if None/NaN/invalid."""
     try:
@@ -149,10 +169,10 @@ def _row_to_biz(row: dict) -> dict:
     tags     = [c.lower().replace("&", "and").replace(" ", "-") for c in cat_list[:5]]
     svg_x    = _safe_float(row.get("svg_x"), 340.0)
     svg_y    = _safe_float(row.get("svg_y"), 350.0)
-    neighborhood = str(row.get("neighborhood") or "Philadelphia")
+    neighborhood = str(row.get("neighborhood") or settings.DEFAULT_CITY)
 
-    raw_city = str(row.get("city") or "Philadelphia")
-    city = raw_city if raw_city.strip() else "Philadelphia"
+    raw_city = str(row.get("city") or settings.DEFAULT_CITY)
+    city = raw_city if raw_city.strip() else settings.DEFAULT_CITY
 
     bid = row["business_id"]
     photo_ids  = _biz_photos.get(bid, [])
@@ -170,19 +190,20 @@ def _row_to_biz(row: dict) -> dict:
         "rating":       _safe_float(row.get("stars"), 4.0),
         "reviews":      int(row.get("review_count") or 0),
         "price":        _price_label(row.get("price_range")),
+        "price_known":  _price_is_known(row.get("price_range")),
         "match":        0,          # injected per-user at request time
         "image":        image_url,
         "cover":        cover_url,
         "gallery":      gallery,
         "attributes":   [],
         "whyPicked":    f"A well-regarded {primary.lower()} in {neighborhood}.",
-        "excerpt":      "",
+        "excerpt":      _biz_excerpts.get(bid, ""),
         "cf":           0,          # injected per-user at request time
         "cb":           0,          # content-based (cold-start TF-IDF similarity)
         "ctx":          0,          # contextual (time-of-day boost)
         "pop":          0,
-        "lat":          _safe_float(row.get("latitude"), 39.9526),
-        "lng":          _safe_float(row.get("longitude"), -75.1652),
+        "lat":          _safe_float(row.get("latitude"),  settings.DEFAULT_LAT),
+        "lng":          _safe_float(row.get("longitude"), settings.DEFAULT_LNG),
         "coords":       {"x": svg_x, "y": svg_y},
         "hours":        "",
         "address":      str(row.get("address") or ""),
@@ -201,8 +222,8 @@ def _load_parquet() -> None:
     try:
         import pandas as pd  # type: ignore
         df = pd.read_parquet(meta_path)
-        for _, row in df.iterrows():
-            biz = _row_to_biz(row.to_dict())
+        for row in df.to_dict("records"):
+            biz = _row_to_biz(row)
             _businesses.append(biz)
             _by_id[biz["id"]] = biz
         _loaded_from_parquet = True
@@ -224,7 +245,6 @@ def _load_mock() -> None:
 def _load_local_businesses() -> None:
     """Load user-created businesses from SQLite and merge into in-memory store."""
     try:
-        from app.database import get_conn
         with get_conn() as conn:
             rows = conn.execute("SELECT * FROM local_businesses").fetchall()
         count = 0
@@ -253,10 +273,6 @@ def _load_local_businesses() -> None:
 
 def add_business(data: dict) -> dict:
     """Insert a new business into SQLite and the in-memory store. Returns the full biz dict."""
-    import uuid
-    from datetime import datetime, timezone
-    from app.database import get_conn
-
     price_map = {"$": 1, "$$": 2, "$$$": 3, "$$$$": 4}
     price_range = price_map.get(data.get("price", "$$"), 2)
     business_id = str(uuid.uuid4())
@@ -277,14 +293,12 @@ def add_business(data: dict) -> dict:
                 data["address"],
                 data.get("rating", 0.0),
                 price_range,
-                data.get("lat", 39.9526),
-                data.get("lng", -75.1652),
+                data.get("lat", settings.DEFAULT_LAT),
+                data.get("lng", settings.DEFAULT_LNG),
                 data.get("created_by", "unknown"),
                 created_at,
             ),
         )
-        conn.commit()
-
     biz = _row_to_biz({
         "business_id": business_id,
         "name":        data["name"],
@@ -295,8 +309,8 @@ def add_business(data: dict) -> dict:
         "stars":       data.get("rating", 0.0),
         "review_count": 0,
         "price_range": price_range,
-        "latitude":    data.get("lat", 39.9526),
-        "longitude":   data.get("lng", -75.1652),
+        "latitude":    data.get("lat", settings.DEFAULT_LAT),
+        "longitude":   data.get("lng", settings.DEFAULT_LNG),
     })
     _businesses.append(biz)
     _by_id[biz["id"]] = biz
@@ -304,7 +318,7 @@ def add_business(data: dict) -> dict:
 
 
 def _load_reviews() -> None:
-    global _biz_reviews
+    global _biz_reviews, _biz_excerpts
     reviews_path = DATA_DIR / "reviews_sample.parquet"
     if not reviews_path.exists():
         logger.info("reviews_sample.parquet not found — run generate_reviews.py to enable review tab")
@@ -312,25 +326,48 @@ def _load_reviews() -> None:
     try:
         import pandas as pd  # type: ignore
         df = pd.read_parquet(reviews_path)
+        # reviews_sample is already sorted by votes desc — first row per business
+        # is the most-voted review, used as the excerpt snippet.
         for bid, group in df.groupby("business_id"):
+            records = group.to_dict("records")
             _biz_reviews[str(bid)] = [
-                {
-                    "author": f"Yelp user",
-                    "rating": float(row["stars"]),
-                    "text":   str(row["text"]),
-                }
-                for _, row in group.iterrows()
+                {"author": "Yelp user", "rating": float(r["stars"]), "text": str(r["text"])}
+                for r in records
             ]
+            top_text = str(records[0]["text"]).strip()
+            # Truncate to first sentence or 160 chars, whichever is shorter
+            sentence_end = top_text.find(". ")
+            if 0 < sentence_end < 160:
+                _biz_excerpts[str(bid)] = top_text[: sentence_end + 1]
+            else:
+                _biz_excerpts[str(bid)] = top_text[:160].rstrip() + ("…" if len(top_text) > 160 else "")
         logger.info("business_store: loaded reviews for %d businesses", len(_biz_reviews))
     except Exception as exc:
         logger.warning("Error loading reviews_sample.parquet (%s)", exc)
 
 
+def _build_derived_caches() -> None:
+    """Pre-compute categories and cities after the main catalog is loaded.
+
+    Called once at startup so get_categories_with_images() and get_cities()
+    are O(1) lookups instead of O(n) scans on every request.
+    """
+    global _categories_cache, _cities_cache
+    from collections import Counter
+    counts: Counter = Counter(b["category"] for b in _businesses if b.get("category"))
+    _categories_cache = [
+        {"name": cat, "img": _img(cat), "count": count}
+        for cat, count in counts.most_common(20)
+    ]
+    _cities_cache = sorted({b["city"] for b in _businesses if b.get("city")})
+
+
 def startup() -> None:
-    _load_photos()     # must run before _load_parquet so gallery URLs are ready
+    _load_photos()           # must run before _load_parquet so gallery URLs are ready
+    _load_reviews()          # must run before _load_parquet so excerpts are ready
     _load_parquet()
-    _load_reviews()
     _load_local_businesses()
+    _build_derived_caches()  # pre-compute category and city indexes
 
 
 def is_real_data() -> bool:
@@ -353,37 +390,13 @@ def get_business(business_id: str) -> Optional[dict]:
 
 
 def get_categories_with_images(n: int = 20) -> list[dict]:
-    """Top N categories by business count, with Unsplash cover images."""
-    from collections import Counter
-    counts: Counter = Counter(
-        biz["category"] for biz in _businesses if biz.get("category")
-    )
-    return [
-        {"name": cat, "img": _img(cat), "count": count}
-        for cat, count in counts.most_common(n)
-    ]
+    """Top N categories by business count. Pre-computed at startup — O(1)."""
+    return _categories_cache[:n]
 
 
 def get_cities() -> list[str]:
-    """Sorted list of distinct cities present in loaded businesses."""
-    return sorted({biz["city"] for biz in _businesses if biz.get("city")})
-
-
-def get_categories_with_images(n: int = 20) -> list[dict]:
-    """Top N categories by business count, with Unsplash cover images."""
-    from collections import Counter
-    counts: Counter = Counter(
-        biz["category"] for biz in _businesses if biz.get("category")
-    )
-    return [
-        {"name": cat, "img": _img(cat), "count": count}
-        for cat, count in counts.most_common(n)
-    ]
-
-
-def get_cities() -> list[str]:
-    """Sorted list of distinct cities present in loaded businesses."""
-    return sorted({biz["city"] for biz in _businesses if biz.get("city")})
+    """Sorted list of distinct cities. Pre-computed at startup — O(1)."""
+    return _cities_cache
 
 
 def search_businesses(

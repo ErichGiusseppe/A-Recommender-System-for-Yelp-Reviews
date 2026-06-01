@@ -79,7 +79,6 @@ def main() -> None:
         top = sorted(revs, key=lambda x: x["votes"], reverse=True)[:TOP_K]
         rows.extend(top)
 
-    import pandas as pd  # already imported above but explicit for clarity
     df = pd.DataFrame(rows)
     df.to_parquet(OUT_PATH, index=False)
     print(

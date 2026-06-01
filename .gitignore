@@ -233,6 +233,10 @@ __marimo__/
 *.blg
 *.synctex.gz
 
+# Markdown planning/documentation files (local only)
+*.md
+!README.md
+
 # Lantern — dataset and all generated artifacts (too large / not redistributable)
 backend/data/
 backend/notebook_env/

@@ -1,5 +1,6 @@
+import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { useMe, useSavedBusinesses } from "../hooks/useApi";
+import { useMe, useSavedBusinesses, useMyReviews } from "../hooks/useApi";
 import { useAuth } from "../contexts/AuthContext";
 import Rating from "../components/ui/Rating";
 import Stat from "../components/ui/Stat";
@@ -16,13 +17,18 @@ const DEFAULT_BARS: SeasonBar[] = [
 
 const BAR_COLORS = ["#C2410C", "#115E59", "#EAB308", "#78716C", "#78716C", "#78716C"];
 
-const TABS = ["Saved", "Reviews", "Lists", "Following"] as const;
+const TABS = ["Saved", "Reviews"] as const;
+type Tab = typeof TABS[number];
 
 export default function Profile() {
   const navigate  = useNavigate();
   const { user: authUser } = useAuth();
-  const { data: me }   = useMe();
-  const { data: saved } = useSavedBusinesses(me.saved_business_ids);
+  const { data: me }      = useMe();
+  const { data: saved }   = useSavedBusinesses(me.saved_business_ids);
+  const { data: reviews } = useMyReviews();
+  const [activeTab, setActiveTab]       = useState<Tab>("Saved");
+  const [reviewsPage, setReviewsPage]   = useState(1);
+  const REVIEWS_PER_PAGE = 20;
 
   const displayName = authUser?.name ?? me.name;
   const nameParts   = displayName.split(" ");
@@ -33,6 +39,9 @@ export default function Profile() {
   const seasonBars: SeasonBar[] =
     me.season_taste && me.season_taste.length > 0 ? me.season_taste : DEFAULT_BARS;
   const maxBarVal = Math.max(...seasonBars.map((r) => r.value), 1);
+
+  const visibleReviews = reviews.slice(0, reviewsPage * REVIEWS_PER_PAGE);
+  const hasMoreReviews = visibleReviews.length < reviews.length;
 
   return (
     <div className="mx-auto px-4 sm:px-8 pt-8" style={{ maxWidth: 1280 }}>
@@ -100,111 +109,119 @@ export default function Profile() {
         className="flex items-center gap-1 mt-8 mb-8 overflow-x-auto"
         style={{ borderBottom: "1px solid #E7E5E4" }}
       >
-        {TABS.map((t, i) => (
-          <button
-            key={t}
-            className="font-sans text-[13px] px-4 py-3 relative transition-colors whitespace-nowrap"
-            style={{
-              color: i === 0 ? "#1C1917" : "#78716C",
-              fontWeight: i === 0 ? 500 : 400,
-            }}
-          >
-            {t}
-            {i === 0 && (
-              <span
-                className="absolute bottom-0 left-0 right-0 h-[2px]"
-                style={{ background: "#C2410C" }}
-              />
-            )}
-          </button>
-        ))}
+        {TABS.map((t) => {
+          const active = t === activeTab;
+          return (
+            <button
+              key={t}
+              onClick={() => { setActiveTab(t); setReviewsPage(1); }}
+              className="font-sans text-[13px] px-4 py-3 relative transition-colors whitespace-nowrap"
+              style={{ color: active ? "#1C1917" : "#78716C", fontWeight: active ? 500 : 400 }}
+            >
+              {t}
+              {active && (
+                <span
+                  className="absolute bottom-0 left-0 right-0 h-[2px]"
+                  style={{ background: "#C2410C" }}
+                />
+              )}
+            </button>
+          );
+        })}
         <span className="ml-auto font-sans text-[12px] shrink-0" style={{ color: "#78716C" }}>
-          <span
-            className="tabular-nums"
-            style={{ color: "#1C1917", fontWeight: 500 }}
-          >
-            {saved.length}
+          <span className="tabular-nums" style={{ color: "#1C1917", fontWeight: 500 }}>
+            {activeTab === "Saved" ? saved.length : reviews.length}
           </span>{" "}
-          of {me.stats.saved} shown
+          {activeTab === "Saved" ? `of ${me.stats.saved} shown` : "reviews"}
         </span>
       </div>
 
       {/* Two-column layout */}
       <div className="grid grid-cols-1 lg:grid-cols-[1fr_0.42fr] gap-8 lg:gap-10 pb-16">
-        {/* Saved grid */}
+        {/* Tab content */}
         <div>
-          {saved.length === 0 ? (
-            <div
-              className="flex flex-col items-center justify-center py-20"
-              style={{ color: "#78716C" }}
-            >
-              <div className="font-serif italic text-[18px] mb-2">Loading your top picks…</div>
-              <div className="font-sans text-[12px]" style={{ color: "#A8A29E" }}>
-                Your saved places will appear here.
+          {activeTab === "Saved" && (
+            saved.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-20" style={{ color: "#78716C" }}>
+                <div className="font-serif italic text-[18px] mb-2">Loading your top picks…</div>
+                <div className="font-sans text-[12px]" style={{ color: "#A8A29E" }}>Your saved places will appear here.</div>
               </div>
-            </div>
-          ) : (
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-5">
-              {saved.map((b) => (
-                <button
-                  key={b.id}
-                  onClick={() => navigate(`/business/${b.id}`)}
-                  className="text-left transition-all hover:-translate-y-[2px] group"
-                >
-                  <div className="aspect-[4/5] rounded-xl overflow-hidden relative">
-                    <img
-                      src={b.image}
-                      alt={b.name}
-                      className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-[1.02]"
-                    />
-                    <div className="absolute top-3 right-3">
-                      <div
-                        className="w-8 h-8 rounded-full flex items-center justify-center"
-                        style={{ background: "rgba(255,255,255,0.92)" }}
-                      >
-                        <span style={{ color: "#C2410C" }}>♥</span>
+            ) : (
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-5">
+                {saved.map((b) => (
+                  <button
+                    key={b.id}
+                    onClick={() => navigate(`/business/${b.id}`)}
+                    className="text-left transition-all hover:-translate-y-[2px] group"
+                  >
+                    <div className="aspect-[4/5] rounded-xl overflow-hidden relative">
+                      <img src={b.image} alt={b.name} className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-[1.02]" />
+                      <div className="absolute top-3 right-3">
+                        <div className="w-8 h-8 rounded-full flex items-center justify-center" style={{ background: "rgba(255,255,255,0.92)" }}>
+                          <span style={{ color: "#C2410C" }}>♥</span>
+                        </div>
                       </div>
                     </div>
+                    <div className="mt-3">
+                      <div className="flex items-baseline justify-between gap-2">
+                        <h3 className="font-serif truncate" style={{ color: "#1C1917", fontSize: 18, fontWeight: 500, letterSpacing: "-0.005em" }}>{b.name}</h3>
+                        <span className="font-sans text-[11px] tabular-nums" style={{ color: "#78716C" }}>{b.price}</span>
+                      </div>
+                      <div className="font-sans text-[11px] uppercase tracking-[0.14em] mt-1" style={{ color: "#78716C" }}>{b.category} · {b.city}</div>
+                      <div className="flex items-center gap-3 mt-2">
+                        <Rating value={b.rating} />
+                        <span className="font-sans text-[11px] tabular-nums" style={{ color: "#78716C" }}>· {b.reviews}</span>
+                      </div>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            )
+          )}
+
+          {activeTab === "Reviews" && (
+            reviews.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-20" style={{ color: "#78716C" }}>
+                <div className="font-serif italic text-[18px] mb-2">No reviews yet.</div>
+                <div className="font-sans text-[12px]" style={{ color: "#A8A29E" }}>Rate a place from its detail page and it will show up here.</div>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {visibleReviews.map((r) => (
+                  <div key={r.business_id} className="rounded-xl p-5" style={{ background: "#FFFFFF", border: "1px solid #E7E5E4" }}>
+                    <div className="flex items-start justify-between gap-4 mb-2">
+                      <button
+                        onClick={() => navigate(`/business/${r.business_id}`)}
+                        className="font-serif text-[16px] hover:underline text-left"
+                        style={{ color: "#1C1917", fontWeight: 500 }}
+                      >
+                        {r.business_name || r.business_id}
+                      </button>
+                      <Rating value={r.stars} />
+                    </div>
+                    {r.text && (
+                      <p className="font-serif italic text-[14px]" style={{ color: "#78716C", lineHeight: 1.6 }}>"{r.text}"</p>
+                    )}
+                    <div className="font-sans text-[11px] mt-3" style={{ color: "#A8A29E" }}>
+                      {new Date(r.created_at).toLocaleDateString("es-CO", { year: "numeric", month: "long", day: "numeric" })}
+                    </div>
                   </div>
-                  <div className="mt-3">
-                    <div className="flex items-baseline justify-between gap-2">
-                      <h3
-                        className="font-serif truncate"
-                        style={{
-                          color: "#1C1917",
-                          fontSize: 18,
-                          fontWeight: 500,
-                          letterSpacing: "-0.005em",
-                        }}
-                      >
-                        {b.name}
-                      </h3>
-                      <span
-                        className="font-sans text-[11px] tabular-nums"
-                        style={{ color: "#78716C" }}
-                      >
-                        {b.price}
-                      </span>
-                    </div>
-                    <div
-                      className="font-sans text-[11px] uppercase tracking-[0.14em] mt-1"
-                      style={{ color: "#78716C" }}
-                    >
-                      {b.category} · {b.city}
-                    </div>
-                    <div className="flex items-center gap-3 mt-2">
-                      <Rating value={b.rating} />
-                      <span
-                        className="font-sans text-[11px] tabular-nums"
-                        style={{ color: "#78716C" }}
-                      >
-                        · {b.reviews}
-                      </span>
-                    </div>
-                  </div>
-                </button>
-              ))}
-            </div>
+                ))}
+
+                {hasMoreReviews && (
+                  <button
+                    onClick={() => setReviewsPage(p => p + 1)}
+                    className="w-full py-3 rounded-xl font-sans text-[13px] transition-colors"
+                    style={{ border: "1px solid #E7E5E4", color: "#78716C", background: "#FAFAF9" }}
+                    onMouseEnter={e => (e.currentTarget.style.borderColor = "#C2410C")}
+                    onMouseLeave={e => (e.currentTarget.style.borderColor = "#E7E5E4")}
+                  >
+                    Load {Math.min(REVIEWS_PER_PAGE, reviews.length - visibleReviews.length)} more
+                    <span style={{ color: "#A8A29E" }}> · {reviews.length - visibleReviews.length} remaining</span>
+                  </button>
+                )}
+              </div>
+            )
           )}
         </div>
 

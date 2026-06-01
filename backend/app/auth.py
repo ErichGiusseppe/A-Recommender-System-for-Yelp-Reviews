@@ -7,21 +7,22 @@ Demo accounts are hardcoded; real Yelp users authenticate with their Yelp name.
 from __future__ import annotations
 
 import json
-import os
 from datetime import datetime, timedelta, timezone
-from pathlib import Path
 from types import SimpleNamespace
 from typing import Optional
 
 from fastapi import Depends, Request
 from jose import JWTError, jwt
 
-# ── Config ──────────────────────────────────────────────────────────────────
-SECRET_KEY  = os.getenv("JWT_SECRET", "lantern-dev-secret-change-before-deploy-2026")
-ALGORITHM   = "HS256"
-EXPIRE_HOURS = 24
+from app.config import settings
+from app.database import get_conn
 
-DATA_DIR    = Path(__file__).parent.parent / "data"
+# ── Config ──────────────────────────────────────────────────────────────────
+SECRET_KEY   = settings.JWT_SECRET
+ALGORITHM    = settings.JWT_ALGORITHM
+EXPIRE_HOURS = settings.JWT_EXPIRE_HOURS
+
+DATA_DIR      = settings.DATA_DIR
 PROFILES_PATH = DATA_DIR / "user_profiles_map.json"
 
 # Lazy-loaded Yelp user index {user_id: name}
@@ -92,7 +93,6 @@ def verify_user(username: str, password: str) -> Optional[dict]:
 
     # SQLite local users
     try:
-        from app.database import get_conn
         with get_conn() as conn:
             row = conn.execute(
                 "SELECT user_id, name FROM local_users WHERE username=? AND password=?",
@@ -118,7 +118,6 @@ def register_user(username: str, password: str, name: str) -> Optional[dict]:
     Returns {user_id, name} on success, None if username is already taken.
     """
     import uuid
-    from app.database import get_conn
     user_id = str(uuid.uuid4())
     created_at = datetime.now(timezone.utc).isoformat()
     try:
@@ -127,7 +126,6 @@ def register_user(username: str, password: str, name: str) -> Optional[dict]:
                 "INSERT INTO local_users (username, password, name, user_id, created_at) VALUES (?,?,?,?,?)",
                 (username, password, name, user_id, created_at),
             )
-            conn.commit()
         return {"user_id": user_id, "name": name}
     except Exception:
         return None  # username already taken (UNIQUE constraint)

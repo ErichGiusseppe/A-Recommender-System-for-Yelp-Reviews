@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { useBusinesses, useCategories } from "../hooks/useApi";
 import { useNeighborhood } from "../contexts/NeighborhoodContext";
@@ -124,21 +124,69 @@ export default function Discovery() {
 
   const displayPlace = neighborhood || city || "Philadelphia";
 
-  const cityBizs = businesses.length
-    ? businesses.filter(b => b.city === (city || "Philadelphia"))
-    : [];
-  const fallbackBizs = cityBizs.length ? cityBizs : businesses;
+  // The hook already fetches filtered by city + neighborhood, so businesses
+  // should only contain the right subset. We still filter client-side as a
+  // safety net in case of stale data from a previous city/neighborhood.
+  const fallbackBizs = city
+    ? businesses.filter(b => b.city === city)
+    : businesses.filter(b => b.city === "Philadelphia"); // guest default
 
-  // Use cold-start picks as top picks when available, fallback to default
-  const top          = (profile && coldPicks.length ? coldPicks : fallbackBizs).slice(0, 4);
-  const trending     = fallbackBizs.slice(4, 7);
+  // A warm user is one whose businesses have real CF signal from SVD++.
+  // For warm users, SVD++ picks (fallbackBizs, already sorted by match) always win
+  // over cold-start picks — the wizard profile may belong to a previous session or
+  // a different user (it lives in localStorage and is not cleared on user switch).
+  const isWarmUser = fallbackBizs.some(b => b.cf > 10);
+  const top = (profile && coldPicks.length && !isWarmUser ? coldPicks : fallbackBizs).slice(0, 4);
+  // Trending: skip low-rated places — a 2.5★ place shouldn't be "trending"
+  const trending = fallbackBizs.filter(b => b.rating >= 3.5).slice(0, 3);
 
-  // "Because you liked" — only for warm users with real CF signal (cf > 10 means SVD++ has
-  // interaction history; cold-start and guest users always have cf = 0).
-  const cfSorted     = [...fallbackBizs].filter(b => b.cf > 10).sort((a, b) => b.cf - a.cf);
-  const becauseLiked = cfSorted[0] ?? null;
-  const becauseList  = becauseLiked
-    ? cfSorted.filter(b => b.id !== becauseLiked.id).slice(0, 3)
+  // "Because you liked" — group high-CF businesses by specific category, pick the dominant
+  // category randomly at page load, show same-category recommendations.
+  // Generic categories (Food, Restaurants, Bars…) are excluded so the anchor is always
+  // a recognisable, specific type of place.
+  const GENERIC_CATS = new Set([
+    "Restaurants", "Food", "Nightlife", "Bars", "Shopping",
+    "Local Services", "Home Services", "Health & Medical", "Automotive",
+  ]);
+
+  const becauseLikedCategory = useMemo(() => {
+    // Anchor must have a strong CF signal (real SVD++ history)
+    const strongCf = fallbackBizs.filter(b => b.cf > 50);
+    if (!strongCf.length) return null;
+
+    // Group by primary category, skipping generic ones
+    const byCategory: Record<string, { anchor: typeof strongCf[0]; recs: typeof strongCf }> = {};
+    for (const b of strongCf) {
+      if (GENERIC_CATS.has(b.category)) continue;
+      if (!byCategory[b.category]) byCategory[b.category] = { anchor: b, recs: [] };
+      byCategory[b.category].recs.push(b);
+    }
+
+    // Build the wider pool (CF > 20) per category and require at least 3 total
+    // (anchor + 2 recs minimum) so the section always shows a full row.
+    const qualified = Object.entries(byCategory)
+      .map(([cat, { recs }]) => {
+        const anchor = [...recs].sort((a, b) => b.cf - a.cf)[0];
+        const pool   = fallbackBizs
+          .filter(b => b.cf > 20 && b.category === cat)
+          .sort((a, b) => b.cf - a.cf);
+        return { category: cat, anchor, pool };
+      })
+      .filter(({ pool }) => pool.length >= 3) // need anchor + at least 2 recs
+      .sort((a, b) => b.pool.length - a.pool.length)
+      .slice(0, 3); // top 3 qualifying categories
+
+    if (!qualified.length) return null;
+
+    // Pick randomly among qualifying categories — stable per business-list change
+    const picked = qualified[Math.floor(Math.random() * qualified.length)];
+    return { category: picked.category, anchor: picked.anchor, recs: picked.pool };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fallbackBizs.map(b => b.id).join(",")]);
+
+  const becauseLiked = becauseLikedCategory?.anchor ?? null;
+  const becauseList  = becauseLikedCategory
+    ? becauseLikedCategory.recs.filter(b => b.id !== becauseLiked?.id).slice(0, 3)
     : [];
 
   // Hidden gems: high rating, fewest reviews (less-discovered places)
@@ -147,9 +195,11 @@ export default function Discovery() {
     .sort((a, b) => a.reviews - b.reviews)
     .slice(0, 3);
 
-  // Best value: $ or $$ price, sorted by rating
+  // Best value: only businesses where we actually know the price is $ or $$
+  // (priceKnown=false means the dataset had no price data — we assigned "$$" as a default,
+  //  which is not enough signal to claim something is affordable)
   const bestValue = [...fallbackBizs]
-    .filter(b => b.price === "$" || b.price === "$$")
+    .filter(b => b.priceKnown && (b.price === "$" || b.price === "$$"))
     .sort((a, b) => b.rating - a.rating)
     .slice(0, 3);
 
@@ -338,7 +388,7 @@ export default function Discovery() {
                   <em style={{ fontStyle: "italic" }}>{becauseLiked.name}</em>
                 </>
               }
-              aside="3 nearby in this lane"
+              aside={`${becauseList.length} nearby in this lane`}
             />
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-5">
               {becauseList.map(b => <SmallCard key={b.id} biz={b} />)}

@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { api } from "../lib/api";
 import type { Business, Category, User } from "../types";
+import type { ReviewOut } from "../lib/api";
 import { BUSINESSES, CATEGORIES, USER } from "../data/mock";
 import { useNeighborhood } from "../contexts/NeighborhoodContext";
 import { useAuth } from "../contexts/AuthContext";
@@ -29,12 +30,16 @@ function useApiCall<T>(
 }
 
 export function useBusinesses() {
-  const { city } = useNeighborhood();
+  const { city, neighborhood } = useNeighborhood();
   const { token } = useAuth();
   return useApiCall<Business[]>(
-    () => api.businesses({ city: city || undefined, limit: 50 }).then((r) => r.items),
+    () => api.businesses({
+      city:         city         || undefined,
+      neighborhood: neighborhood || undefined,
+      limit: 50,
+    }).then((r) => r.items),
     BUSINESSES,
-    [city, token]
+    [city, neighborhood, token]
   );
 }
 
@@ -53,6 +58,11 @@ export function useCategories() {
 export function useMe() {
   const { token } = useAuth();
   return useApiCall<User>(() => api.me(), USER, [token]);
+}
+
+export function useMyReviews() {
+  const { token } = useAuth();
+  return useApiCall<ReviewOut[]>(() => api.myReviews(), [], [token]);
 }
 
 export function useSavedBusinesses(ids: string[]) {

@@ -22,6 +22,7 @@ export interface Business {
   rating: number;
   reviews: number;
   price: Price;
+  priceKnown?: boolean;
   match: number;
   image: string;
   cover: string;

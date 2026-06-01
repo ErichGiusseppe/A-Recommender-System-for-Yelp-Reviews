@@ -21,7 +21,8 @@ class BusinessModel(BaseModel):
     neighborhood: str
     rating: float
     reviews: int
-    price: str
+    price:       Literal["$", "$$", "$$$", "$$$$"] = "$$"
+    price_known: bool = False
     match: int
     image: str
     cover: str

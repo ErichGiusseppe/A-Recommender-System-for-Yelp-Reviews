@@ -1,16 +1,14 @@
 import json
 from datetime import datetime, timezone
-from pathlib import Path
 from types import SimpleNamespace
 from fastapi import APIRouter, Depends, Response
+from app.config import settings
 from app.models import UserModel, TasteProfileModel
 from app.auth import get_current_user, require_auth, _profiles, get_demo_accounts
+from app.database import get_conn
 from app.services import recommender, business_store
 
 router = APIRouter()
-
-DATA_DIR = Path(__file__).parent.parent.parent / "data"
-MOCK_DIR = DATA_DIR / "mock"
 
 _DEFAULT_SEASON_BARS = [
     {"label": "Italian",   "value": 28},
@@ -23,7 +21,7 @@ _DEFAULT_SEASON_BARS = [
 
 
 def _load_mock_user() -> dict:
-    with open(MOCK_DIR / "user.json", encoding="utf-8") as f:
+    with open(settings.MOCK_DIR / "user.json", encoding="utf-8") as f:
         data = json.load(f)
     data.setdefault("season_taste", _DEFAULT_SEASON_BARS)
     return data
@@ -48,6 +46,21 @@ def _compute_season_taste(user_id: str) -> list[dict]:
     ]
 
 
+def _load_real_user_stats(user_id: str) -> dict:
+    """Compute actual review stats from the SQLite reviews table."""
+    with get_conn() as conn:
+        rows = conn.execute(
+            "SELECT stars FROM reviews WHERE user_id = ?", (user_id,)
+        ).fetchall()
+    if not rows:
+        return {"reviews": 0, "avg_rating": 0.0}
+    stars = [r["stars"] for r in rows]
+    return {
+        "reviews":    len(stars),
+        "avg_rating": round(sum(stars) / len(stars), 1),
+    }
+
+
 @router.get("/users/me", response_model=UserModel)
 def get_me(current_user: SimpleNamespace = Depends(get_current_user)):
     if current_user.is_guest:
@@ -55,32 +68,33 @@ def get_me(current_user: SimpleNamespace = Depends(get_current_user)):
 
     profiles = _profiles()
     profile = profiles.get(current_user.username, {})
-    name = profile.get("name", current_user.username)
-    parts = name.split()
-    first = parts[0] if parts else name
-    avatar = profile.get("avatar", (name[:2].upper() if len(name) >= 2 else "??"))
+    name    = profile.get("name", current_user.username)
+    parts   = name.split()
+    first   = parts[0] if parts else name
+    avatar  = profile.get("avatar", (name[:2].upper() if len(name) >= 2 else "??"))
 
-    top_recs = recommender.get_recommendations(current_user.user_id, limit=50)
-    saved_ids = [r["business_id"] for r in top_recs[:12]]
+    top_recs     = recommender.get_recommendations(current_user.user_id, limit=50)
+    saved_ids    = [r["business_id"] for r in top_recs[:12]]
     season_taste = _compute_season_taste(current_user.user_id)
+    review_stats = _load_real_user_stats(current_user.user_id)
 
     return {
-        "id": current_user.username,
-        "name": name,
+        "id":         current_user.username,
+        "name":       name,
         "first_name": first,
-        "avatar": avatar,
-        "location": "Philadelphia",
-        "bio": "Exploring Philadelphia one plate at a time.",
+        "avatar":     avatar,
+        "location":   settings.DEFAULT_CITY,
+        "bio":        "Exploring one plate at a time.",
         "member_since": "2024",
         "stats": {
             "saved":      len(saved_ids),
-            "reviews":    max(5, len(top_recs) // 3),
+            "reviews":    review_stats["reviews"],
             "cities":     1,
-            "avg_rating": 4.2,
+            "avg_rating": review_stats["avg_rating"],
         },
         "taste": {"italian": 70, "asian": 65, "cozy": 80, "lively": 50, "cheap": 40, "special": 70},
         "saved_business_ids": saved_ids,
-        "cities_visited": ["Philadelphia"],
+        "cities_visited": [settings.DEFAULT_CITY],
         "season_taste": season_taste,
     }
 
@@ -93,8 +107,10 @@ def list_users():
 @router.post("/users/me/taste", response_model=TasteProfileModel)
 def update_taste(
     taste: TasteProfileModel,
-    current_user: SimpleNamespace = Depends(get_current_user),
+    current_user: SimpleNamespace = Depends(require_auth),
 ):
+    """Persist taste profile. Currently echoes back — full persistence is a TODO."""
+    # TODO: store in user_preferences table when taste analytics are needed
     return taste
 
 
@@ -104,7 +120,6 @@ def save_coldstart(
     current_user: SimpleNamespace = Depends(require_auth),
 ):
     """Persist a cold-start preference profile linked to the authenticated user."""
-    from app.database import get_conn
     now = datetime.now(timezone.utc).isoformat()
     with get_conn() as conn:
         conn.execute(
@@ -115,14 +130,12 @@ def save_coldstart(
                  updated_at     = excluded.updated_at""",
             (current_user.user_id, json.dumps(profile), now),
         )
-        conn.commit()
     return Response(status_code=204)
 
 
 @router.get("/users/me/coldstart")
 def get_coldstart(current_user: SimpleNamespace = Depends(require_auth)):
     """Return the stored cold-start profile for the authenticated user, or null."""
-    from app.database import get_conn
     with get_conn() as conn:
         row = conn.execute(
             "SELECT coldstart_json FROM user_preferences WHERE user_id = ?",

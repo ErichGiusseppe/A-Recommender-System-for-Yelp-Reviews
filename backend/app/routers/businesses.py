@@ -6,16 +6,13 @@ from app.services import business_store, recommender
 from app.auth import get_current_user, require_auth
 from app.database import get_conn
 import json
-from pathlib import Path
+from app.config import settings
 
 router = APIRouter()
 
-_MOCK_DIR = Path(__file__).parent.parent.parent / "data" / "mock"
-_categories_cache: list[dict] | None = None
-
 
 def _load_mock_categories() -> list[dict]:
-    with open(_MOCK_DIR / "categories.json", encoding="utf-8") as f:
+    with open(settings.MOCK_DIR / "categories.json", encoding="utf-8") as f:
         return json.load(f)
 
 
@@ -70,6 +67,7 @@ def _profile_to_content_params(profile: dict) -> dict:
 @router.get("/businesses", response_model=PaginatedBusinesses)
 def list_businesses(
     city: str | None = None,
+    neighborhood: str | None = None,
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
     current_user: SimpleNamespace = Depends(get_current_user),
@@ -78,6 +76,8 @@ def list_businesses(
     items = business_store.get_businesses()
     if city:
         items = [b for b in items if b["city"].lower() == city.lower()]
+    if neighborhood:
+        items = [b for b in items if b["neighborhood"].lower() == neighborhood.lower()]
 
     user_ratings = (
         _load_user_ratings(user_id) if not current_user.is_guest else None
@@ -85,7 +85,7 @@ def list_businesses(
 
     # Cold-start content scores for users without SVD++ history
     cold_start_scores = None
-    has_personal_recs = not current_user.is_guest and bool(recommender._top_n.get(user_id))
+    has_personal_recs = not current_user.is_guest and recommender.has_precomputed_recs(user_id)
     if not has_personal_recs and not current_user.is_guest:
         cs_profile = _load_cold_start_profile(user_id)
         if cs_profile:
@@ -97,6 +97,7 @@ def list_businesses(
         items, user_id, city=city, hour=hour,
         user_ratings=user_ratings, cold_start_scores=cold_start_scores,
     )
+    all_scored.sort(key=lambda b: b["match"], reverse=True)
     total = len(all_scored)
     return {"items": all_scored[offset: offset + limit], "total": total}
 

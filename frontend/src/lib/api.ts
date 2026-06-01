@@ -49,6 +49,7 @@ export interface ReviewSubmit {
 
 export interface ReviewOut {
   business_id: string;
+  business_name: string;
   stars: number;
   text: string;
   created_at: string;
@@ -123,11 +124,12 @@ export const api = {
     return get<RecommendationsResponse>(`/recommendations/cold-start?${qs}`);
   },
 
-  businesses: (params?: { city?: string; limit?: number; offset?: number }) => {
+  businesses: (params?: { city?: string; neighborhood?: string; limit?: number; offset?: number }) => {
     const qs = new URLSearchParams();
-    if (params?.city)   qs.set("city",   params.city);
-    if (params?.limit)  qs.set("limit",  String(params.limit));
-    if (params?.offset) qs.set("offset", String(params.offset));
+    if (params?.city)         qs.set("city",         params.city);
+    if (params?.neighborhood) qs.set("neighborhood", params.neighborhood);
+    if (params?.limit)        qs.set("limit",        String(params.limit));
+    if (params?.offset)       qs.set("offset",       String(params.offset));
     return get<PaginatedBusinesses>(`/businesses?${qs}`);
   },
 

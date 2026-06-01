@@ -1,6 +1,6 @@
 """
 SQLite persistence layer for user-created data.
-Stores local_users and local_businesses created via the API.
+Stores local_users, local_businesses, reviews and user preferences.
 """
 import sqlite3
 from pathlib import Path
@@ -16,6 +16,9 @@ def get_conn() -> sqlite3.Connection:
 
 def init_db() -> None:
     with get_conn() as conn:
+        # Enable WAL mode for better concurrent read performance
+        conn.execute("PRAGMA journal_mode=WAL")
+
         conn.execute("""
             CREATE TABLE IF NOT EXISTS local_users (
                 username    TEXT PRIMARY KEY,
@@ -58,4 +61,7 @@ def init_db() -> None:
                 PRIMARY KEY (user_id, business_id)
             )
         """)
-        conn.commit()
+        # Index for the most common query: all reviews by a given user
+        conn.execute("""
+            CREATE INDEX IF NOT EXISTS idx_reviews_user_id ON reviews (user_id)
+        """)

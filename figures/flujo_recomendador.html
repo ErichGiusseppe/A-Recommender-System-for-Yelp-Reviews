@@ -1,0 +1,685 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Lantern — Flujo del Recomendador Híbrido</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: 'Segoe UI', system-ui, sans-serif;
+  background: #f8f7f4;
+  color: #1c1917;
+  padding: 48px 40px;
+  max-width: 1100px;
+  margin: 0 auto;
+}
+
+/* ── Typography ── */
+h1 { font-size: 26px; font-weight: 800; color: #1c1917; letter-spacing: -0.5px; }
+h1 span { color: #c2410c; }
+.subtitle { font-size: 13px; color: #78716c; margin-top: 4px; }
+.section-title {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: #a8a29e;
+  margin-bottom: 14px;
+}
+
+/* ── Layout ── */
+.header { margin-bottom: 40px; border-bottom: 1.5px solid #e7e5e4; padding-bottom: 20px; }
+.phase { margin-bottom: 36px; }
+
+/* ── Cards ── */
+.card {
+  background: #ffffff;
+  border: 1px solid #e7e5e4;
+  border-radius: 12px;
+  padding: 20px 22px;
+}
+.card-sm {
+  background: #ffffff;
+  border: 1px solid #e7e5e4;
+  border-radius: 10px;
+  padding: 14px 16px;
+}
+
+/* ── Tags / badges ── */
+.tag {
+  display: inline-block;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  padding: 2px 9px;
+  border-radius: 20px;
+  margin-bottom: 8px;
+}
+.tag-orange { background: #fff7ed; color: #c2410c; border: 1px solid #fed7aa; }
+.tag-blue   { background: #eff6ff; color: #1d4ed8; border: 1px solid #bfdbfe; }
+.tag-green  { background: #f0fdf4; color: #15803d; border: 1px solid #bbf7d0; }
+.tag-purple { background: #faf5ff; color: #7e22ce; border: 1px solid #e9d5ff; }
+.tag-amber  { background: #fffbeb; color: #92400e; border: 1px solid #fde68a; }
+.tag-gray   { background: #f5f5f4; color: #57534e; border: 1px solid #d6d3d1; }
+
+/* ── Offline phase ── */
+.offline-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px;
+  margin-bottom: 14px;
+}
+.step-card {
+  background: #fff;
+  border: 1px solid #e7e5e4;
+  border-radius: 10px;
+  padding: 14px;
+}
+.step-num { font-size: 10px; font-weight: 700; color: #a8a29e; margin-bottom: 5px; }
+.step-name { font-size: 13px; font-weight: 700; color: #1c1917; margin-bottom: 6px; }
+.step-body { font-size: 11px; color: #57534e; line-height: 1.6; }
+.step-body code {
+  font-family: 'Courier New', monospace;
+  font-size: 10px;
+  background: #f5f5f4;
+  padding: 1px 5px;
+  border-radius: 3px;
+  color: #78716c;
+}
+.artifact-strip {
+  background: #f0fdf4;
+  border: 1px solid #bbf7d0;
+  border-radius: 8px;
+  padding: 12px 18px;
+  display: flex;
+  gap: 28px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+.artifact-strip .a-label { font-size: 10px; font-weight: 700; color: #15803d; text-transform: uppercase; letter-spacing: 0.08em; }
+.artifact-strip .a-val { font-size: 11px; color: #166534; font-family: monospace; margin-top: 1px; }
+.artifact-sep { width: 1px; height: 28px; background: #bbf7d0; }
+
+/* ── Connector ── */
+.connector {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 10px 0;
+  color: #d6d3d1;
+  font-size: 11px;
+}
+.connector::before, .connector::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: #e7e5e4;
+}
+.connector-v {
+  width: 1.5px;
+  height: 14px;
+  background: #d6d3d1;
+  margin: 0 0 0 20px;
+}
+
+/* ── Pre-filter ── */
+.prefilter {
+  background: #faf5ff;
+  border: 1px solid #e9d5ff;
+  border-radius: 10px;
+  padding: 14px 20px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 6px;
+}
+.prefilter .pf-text { font-size: 13px; font-weight: 600; color: #581c87; }
+.prefilter .pf-detail { font-size: 11px; color: #7e22ce; margin-top: 2px; }
+.prefilter .pf-arrow { font-size: 20px; color: #d8b4fe; margin: 0 4px; }
+.prefilter .pf-result { font-size: 13px; font-weight: 700; color: #581c87; }
+
+/* ── Branches ── */
+.branches-header {
+  background: #1c1917;
+  border-radius: 10px 10px 0 0;
+  padding: 12px 20px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.branches-header .bh-title { font-size: 13px; font-weight: 700; color: #fff; }
+.branches-header .bh-sub { font-size: 11px; color: #a8a29e; margin-left: auto; }
+
+.branches-body {
+  background: #fff;
+  border: 1px solid #e7e5e4;
+  border-top: none;
+  border-radius: 0 0 10px 10px;
+  overflow: hidden;
+}
+.branch-row {
+  display: grid;
+  grid-template-columns: 180px 1fr;
+  border-bottom: 1px solid #f5f5f4;
+}
+.branch-row:last-child { border-bottom: none; }
+.branch-left {
+  padding: 16px 16px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  border-right: 1px solid #f5f5f4;
+}
+.branch-right {
+  padding: 16px 20px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0 24px;
+}
+.br-priority {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  margin-bottom: 4px;
+}
+.br-title { font-size: 14px; font-weight: 700; margin-bottom: 3px; }
+.br-ref { font-size: 10px; color: #a8a29e; font-style: italic; }
+.br-when {
+  font-size: 10px;
+  color: #78716c;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid #f0f0f0;
+  line-height: 1.4;
+}
+.br-when strong { color: #1c1917; }
+.br-how { font-size: 11px; color: #44403c; line-height: 1.6; }
+.br-how code {
+  display: block;
+  font-family: 'Courier New', monospace;
+  font-size: 10px;
+  background: #f5f5f4;
+  border: 1px solid #e7e5e4;
+  padding: 5px 8px;
+  border-radius: 5px;
+  margin: 5px 0;
+  color: #57534e;
+}
+.br-math { font-size: 11px; color: #44403c; }
+.br-signals {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 8px;
+}
+.signal-pill {
+  font-size: 10px;
+  padding: 3px 8px;
+  border-radius: 4px;
+  font-weight: 600;
+}
+
+/* Branch color schemes */
+.branch-1 .branch-left { background: #eff6ff; }
+.branch-1 .br-priority { color: #1d4ed8; }
+.branch-1 .br-title { color: #1e3a8a; }
+
+.branch-2 .branch-left { background: #f0f9ff; }
+.branch-2 .br-priority { color: #0369a1; }
+.branch-2 .br-title { color: #0c4a6e; }
+
+.branch-2b .branch-left { background: #faf5ff; }
+.branch-2b .br-priority { color: #7e22ce; }
+.branch-2b .br-title { color: #581c87; }
+.branch-2b { background: #fdfcff; }
+
+.branch-3 .branch-left { background: #f0fdf4; }
+.branch-3 .br-priority { color: #15803d; }
+.branch-3 .br-title { color: #14532d; }
+
+/* ── CTX section ── */
+.ctx-card {
+  background: #fffbeb;
+  border: 1px solid #fde68a;
+  border-radius: 10px;
+  padding: 18px 22px;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 28px;
+  align-items: start;
+}
+.ctx-title { font-size: 14px; font-weight: 700; color: #92400e; margin-bottom: 4px; }
+.ctx-body { font-size: 11px; color: #78716c; line-height: 1.6; }
+.ctx-body strong { color: #92400e; }
+.ctx-table { font-size: 11px; color: #78716c; border-collapse: collapse; }
+.ctx-table td { padding: 3px 12px 3px 0; white-space: nowrap; }
+.ctx-table td:first-child { font-weight: 600; color: #92400e; }
+
+/* ── Formula ── */
+.formula-card {
+  background: #1c1917;
+  border-radius: 12px;
+  padding: 24px 28px;
+  color: #fff;
+}
+.formula-label { font-size: 10px; font-weight: 700; letter-spacing: 0.15em; text-transform: uppercase; color: #78716c; margin-bottom: 14px; }
+.formula-eq {
+  font-family: 'Georgia', serif;
+  font-size: 18px;
+  text-align: center;
+  margin-bottom: 20px;
+  color: #e8e8e8;
+  line-height: 1.8;
+}
+.formula-eq .coef { color: #f97316; font-weight: 700; }
+.formula-eq .cf { color: #93c5fd; }
+.formula-eq .ctx { color: #fcd34d; }
+.formula-eq .pop { color: #86efac; }
+.weights-row {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+}
+.w-card {
+  border-radius: 8px;
+  padding: 12px 14px;
+}
+.w-card .w-pct { font-size: 22px; font-weight: 800; margin-bottom: 2px; }
+.w-card .w-name { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 4px; }
+.w-card .w-desc { font-size: 10px; opacity: 0.7; line-height: 1.4; }
+.w-cf  { background: #1e3a5f; } .w-cf  .w-pct, .w-cf  .w-name { color: #93c5fd; }
+.w-ctx { background: #292006; border: 1px solid #3f3010; } .w-ctx .w-pct, .w-ctx .w-name { color: #fcd34d; }
+.w-pop { background: #0f2818; } .w-pop .w-pct, .w-pop .w-name { color: #86efac; }
+
+/* ── Output ── */
+.output-card {
+  background: #c2410c;
+  border-radius: 10px;
+  padding: 16px 24px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+.output-card .out-main { font-size: 15px; font-weight: 700; color: #fff; }
+.output-card .out-sub { font-size: 11px; color: rgba(255,255,255,0.7); margin-top: 2px; }
+.output-card .out-badge {
+  background: rgba(255,255,255,0.15);
+  color: #fff;
+  font-size: 11px;
+  padding: 5px 14px;
+  border-radius: 20px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+/* ── Burke ── */
+.burke-card {
+  background: #fff;
+  border: 1px solid #e7e5e4;
+  border-radius: 10px;
+  padding: 18px 22px;
+  margin-top: 12px;
+}
+.burke-title { font-size: 10px; font-weight: 700; letter-spacing: 0.15em; text-transform: uppercase; color: #a8a29e; margin-bottom: 12px; }
+.burke-pills { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; }
+.burke-pill {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 5px 14px;
+  border-radius: 20px;
+}
+.bp-cascade  { background: #eff6ff; color: #1d4ed8; border: 1px solid #bfdbfe; }
+.bp-switch   { background: #f0fdf4; color: #15803d; border: 1px solid #bbf7d0; }
+.bp-weighted { background: #fffbeb; color: #92400e; border: 1px solid #fde68a; }
+.burke-desc { font-size: 11px; color: #78716c; line-height: 1.6; }
+
+/* ── Footer ── */
+.footer { text-align: center; font-size: 11px; color: #d6d3d1; margin-top: 40px; }
+</style>
+</head>
+<body>
+
+<!-- ═══ HEADER ═══ -->
+<div class="header">
+  <h1>Lantern — <span>Flujo del Recomendador Híbrido</span></h1>
+  <p class="subtitle">MINE 4201 · 2026-1 · Universidad de los Andes &nbsp;·&nbsp; SVD++ + Folding-in + Cold-start TF-IDF + Re-ranking Contextual</p>
+</div>
+
+
+<!-- ═══════════════════════════════════════════════
+     FASE OFFLINE
+════════════════════════════════════════════════ -->
+<div class="phase">
+  <div class="section-title">① Fase Offline — Entrenamiento (se ejecuta una sola vez, no en producción)</div>
+
+  <div class="offline-grid">
+    <div class="step-card">
+      <div class="step-num">Paso 1 · Datos</div>
+      <div class="step-name">Dataset Yelp completo</div>
+      <div class="step-body">
+        6,990,280 reseñas<br>
+        1,987,897 usuarios<br>
+        150,346 negocios<br>
+        10 ciudades de EE.UU.
+      </div>
+    </div>
+
+    <div class="step-card">
+      <div class="step-num">Paso 2 · Partición</div>
+      <div class="step-name">Train / Test 80/20</div>
+      <div class="step-body">
+        <code>train_test_split</code>
+        scikit-surprise<br>
+        <code>random_state = 10</code>
+        Entrenamiento: 5,592,224<br>
+        Prueba: 1,398,056 interacciones
+      </div>
+    </div>
+
+    <div class="step-card">
+      <div class="step-num">Paso 3 · Modelo</div>
+      <div class="step-name">Entrenamiento SVD++</div>
+      <div class="step-body">
+        n_factors = 25<br>
+        n_epochs = 30<br>
+        lr_all = 0.005 · reg_all = 0.05<br>
+        Grid search: 8 configs, CV = 5<br>
+        ~26 min en Colab
+      </div>
+    </div>
+
+    <div class="step-card">
+      <div class="step-num">Paso 4 · Evaluación</div>
+      <div class="step-name">Métricas offline</div>
+      <div class="step-body">
+        <strong style="color:#c2410c">RMSE = 1.280</strong><br>
+        <strong style="color:#c2410c">MAE = 1.024</strong><br>
+        Evaluado sobre testset<br>
+        (1,398,056 interacciones)
+      </div>
+    </div>
+  </div>
+
+  <div class="artifact-strip">
+    <div><div class="a-label">Modelo CF</div><div class="a-val">model_SVDpp_100.joblib &nbsp;·&nbsp; P (1,745,602×25) · Q (150,341×25) · Y · b_u · b_i</div></div>
+    <div class="artifact-sep"></div>
+    <div><div class="a-label">Modelo contenido</div><div class="a-val">content_model.joblib &nbsp;·&nbsp; TF-IDF sobre categorías</div></div>
+    <div class="artifact-sep"></div>
+    <div><div class="a-label">Popularidad</div><div class="a-val">top_n.parquet &nbsp;·&nbsp; fallback por ciudad</div></div>
+  </div>
+</div>
+
+
+<!-- ═══════════════════════════════════════════════
+     FASE ONLINE
+════════════════════════════════════════════════ -->
+<div class="phase">
+  <div class="section-title">② Fase Online — Cada request en producción (~2–50 ms total)</div>
+
+  <!-- Request -->
+  <div class="card-sm" style="display:inline-flex;align-items:center;gap:12px;margin-bottom:6px;">
+    <span class="tag tag-gray" style="margin:0">Request</span>
+    <code style="font-family:monospace;font-size:13px;color:#1c1917">GET /businesses?city=Philadelphia</code>
+  </div>
+  <div class="connector-v"></div>
+
+  <!-- Pre-filter -->
+  <div class="prefilter" style="margin-bottom:6px;">
+    <span class="tag tag-purple" style="margin:0;white-space:nowrap">Pre-filtro</span>
+    <div>
+      <div class="pf-text">Filtro por ciudad</div>
+      <div class="pf-detail">Se aplica antes de cualquier scoring — reduce el espacio de candidatos</div>
+    </div>
+    <div class="pf-arrow">→</div>
+    <div>
+      <div class="pf-result">~150,000 → ~4,000 candidatos</div>
+      <div style="font-size:10px;color:#a8a29e;margin-top:2px;">Solo negocios de la ciudad seleccionada</div>
+    </div>
+  </div>
+  <div class="connector-v"></div>
+
+  <!-- Branch table -->
+  <div style="margin-bottom:6px;">
+    <div class="branches-header">
+      <span class="bh-title">inject_scores() — Cadena de prioridad</span>
+      <span class="bh-sub">Se evalúa en orden; la primera que aplica gana</span>
+    </div>
+    <div class="branches-body">
+
+      <!-- P1: Folding-in -->
+      <div class="branch-row branch-1">
+        <div class="branch-left">
+          <div class="br-priority">Prioridad 1</div>
+          <div class="br-title">Folding-in</div>
+          <div class="br-ref">Brand (2006)</div>
+          <div class="br-when">
+            <strong>¿Cuándo?</strong><br>
+            Usuario está en el modelo SVD++ Y tiene nuevas calificaciones hechas desde el entrenamiento
+          </div>
+        </div>
+        <div class="branch-right">
+          <div>
+            <div class="br-how">
+              <strong style="font-size:12px;">¿Qué hace?</strong><br>
+              Actualiza el vector latente del usuario <em>sin reentrenar el modelo completo</em>. Mantiene Q (negocios) fija y resuelve por mínimos cuadrados:
+              <code>residuo: r_i = stars_i − μ − b_u − b_i − q_i · u_impl</code>
+              <code>argmin ‖Q · p_u − r‖²  →  np.linalg.lstsq</code>
+              Luego re-puntúa los ~4,000 negocios con el p_u actualizado.
+            </div>
+          </div>
+          <div>
+            <div class="br-math">
+              <strong style="font-size:12px;">Fórmula de score</strong><br><br>
+              <code>match = 0.60·CF_nuevo + 0.25·CTX + 0.15·POP</code>
+              <br>
+              <div style="font-size:10px;color:#78716c;margin-top:6px;line-height:1.5">
+                CF viene del p_u recalculado.<br>
+                Latencia: &lt;50ms incluso con 150k ítems en memoria.<br>
+                Los negocios ya calificados se excluyen del resultado.
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- P2: Warm SVD++ -->
+      <div class="branch-row branch-2">
+        <div class="branch-left">
+          <div class="br-priority">Prioridad 2</div>
+          <div class="br-title">SVD++ Vectorizado</div>
+          <div class="br-ref">Koren (2008)</div>
+          <div class="br-when">
+            <strong>¿Cuándo?</strong><br>
+            Usuario en el trainset SVD++, pero sin calificaciones nuevas desde el entrenamiento
+          </div>
+        </div>
+        <div class="branch-right">
+          <div>
+            <div class="br-how">
+              <strong style="font-size:12px;">¿Qué hace?</strong><br>
+              Construye el vector efectivo del usuario incorporando la señal implícita de todos los ítems con los que interactuó:
+              <code>u_eff = p_u + (1/√|N(u)|) · Σ y_j</code>
+              Luego evalúa todos los negocios en paralelo con un producto matricial:
+              <code>r̂_ui = μ + b_u + b_i + q_i · u_eff</code>
+            </div>
+          </div>
+          <div>
+            <div class="br-math">
+              <strong style="font-size:12px;">Por qué es rápido</strong><br><br>
+              <code>scores = Q @ u_eff  →  numpy dot</code>
+              <br>
+              <div style="font-size:10px;color:#78716c;margin-top:6px;line-height:1.5">
+                ~2ms para ~4,000 candidatos.<br>
+                Q es la matriz de factores de negocios (150,341 × 25), ya cargada en RAM.<br>
+                Scores normalizados a [0, 1].
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- P2b: Transition -->
+      <div class="branch-row branch-2b">
+        <div class="branch-left">
+          <div class="br-priority">Prioridad 2b · Transición</div>
+          <div class="br-title">Blend CF → CB</div>
+          <div class="br-ref">Schein et al. (2002)</div>
+          <div class="br-when">
+            <strong>¿Cuándo?</strong><br>
+            Usuario warm + entre 1 y 4 reviews propias + tiene perfil del wizard activo
+          </div>
+        </div>
+        <div class="branch-right">
+          <div>
+            <div class="br-how">
+              <strong style="font-size:12px;">¿Qué hace?</strong><br>
+              Mezcla progresiva entre la señal colaborativa (SVD++) y la señal de contenido (TF-IDF del wizard). A medida que el usuario acumula ratings, la señal CF gana peso:
+              <code>α = n_ratings / 5  →  α ∈ (0, 1)</code>
+              <code>signal = α · CF  +  (1 − α) · CB</code>
+            </div>
+          </div>
+          <div>
+            <div class="br-math">
+              <strong style="font-size:12px;">Intuición</strong><br><br>
+              <div style="font-size:11px;color:#44403c;line-height:1.6">
+                Con 1 rating: 20% CF + 80% CB<br>
+                Con 2 ratings: 40% CF + 60% CB<br>
+                Con 3 ratings: 60% CF + 40% CB<br>
+                Con 4 ratings: 80% CF + 20% CB<br>
+                Con ≥5 ratings: pasa a Prioridad 2 (full CF)
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- P3: Cold-start -->
+      <div class="branch-row branch-3">
+        <div class="branch-left">
+          <div class="br-priority">Prioridad 3</div>
+          <div class="br-title">Cold-start TF-IDF</div>
+          <div class="br-ref">Switching · Burke (2002)</div>
+          <div class="br-when">
+            <strong>¿Cuándo?</strong><br>
+            Usuario no está en el trainset de SVD++ (nuevo en el sistema o no estaba en el dataset Yelp)
+          </div>
+        </div>
+        <div class="branch-right">
+          <div>
+            <div class="br-how">
+              <strong style="font-size:12px;">¿Qué hace?</strong><br>
+              El wizard recolecta preferencias explícitas (categorías, precio, ocasión). El perfil se convierte en un vector TF-IDF y se compara con el vector TF-IDF de cada negocio:
+              <code>CB_score = cosine_sim(perfil_usuario, negocio)</code>
+              Filtrado por ciudad antes de la similitud.
+            </div>
+          </div>
+          <div>
+            <div class="br-math">
+              <strong style="font-size:12px;">Fórmula de score</strong><br><br>
+              <code>match = 0.60·CB + 0.25·CTX + 0.15·POP</code>
+              <br>
+              <div style="font-size:10px;color:#78716c;margin-top:6px;line-height:1.5">
+                CF = 0 (no hay señal colaborativa).<br>
+                CB toma el rol de la señal principal.<br>
+                Visible en ExplanationCard: CB > 0, CF = 0.
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div><!-- /branches-body -->
+  </div>
+  <div class="connector-v"></div>
+
+  <!-- CTX -->
+  <div class="ctx-card" style="margin-bottom:6px;">
+    <div>
+      <div><span class="tag tag-amber">Post-filtro · Re-ranking contextual</span></div>
+      <div class="ctx-title">Scoring por franja horaria</div>
+      <div class="ctx-body">
+        Se calcula <strong>en vivo</strong> para cada negocio según la hora actual del request y las etiquetas de categoría del negocio.<br>
+        Devuelve un valor <strong>[0, 1]</strong> que entra como componente <em>aditivo</em> en la fórmula final — no excluye negocios, solo ajusta su peso.<br>
+        El valor CTX mostrado en la ExplanationCard es el mismo que se usó para calcular el score.
+      </div>
+    </div>
+    <div>
+      <table class="ctx-table">
+        <tr><td>☀ Mañana (6–11h)</td><td>Café, brunch, bakeries, jugos</td></tr>
+        <tr><td>◑ Almuerzo (11–15h)</td><td>Sandwiches, tacos, food trucks</td></tr>
+        <tr><td>☕ Tarde (15–18h)</td><td>Café, postres, helados, bubble tea</td></tr>
+        <tr><td>☾ Cena (18–23h)</td><td>Italiana, steakhouse, sushi, barbeque</td></tr>
+        <tr><td>★ Noche (23–6h)</td><td>Pizza, bares, diners, pubs</td></tr>
+      </table>
+    </div>
+  </div>
+  <div class="connector-v"></div>
+
+  <!-- Formula -->
+  <div class="formula-card" style="margin-bottom:6px;">
+    <div class="formula-label">Fórmula unificada — aplica en todas las rutas personalizadas</div>
+    <div class="formula-eq">
+      match &nbsp;=&nbsp; ⌊ 100 &thinsp;·&thinsp;
+      ( <span class="coef">w<sub>CF</sub></span>&thinsp;·&thinsp;<span class="cf">CF</span>
+      &nbsp;+&nbsp;
+      <span class="coef">w<sub>CTX</sub></span>&thinsp;·&thinsp;<span class="ctx">CTX</span>
+      &nbsp;+&nbsp;
+      <span class="coef">w<sub>POP</sub></span>&thinsp;·&thinsp;<span class="pop">POP</span>
+      ) ⌋
+    </div>
+    <div class="weights-row">
+      <div class="w-card w-cf">
+        <div class="w-name">CF — Colaborativo</div>
+        <div class="w-pct">60%</div>
+        <div class="w-desc">Score SVD++ (o CB en cold-start) normalizado a [0, 1]. Señal principal del sistema.</div>
+      </div>
+      <div class="w-card w-ctx">
+        <div class="w-name">CTX — Contextual</div>
+        <div class="w-pct">25%</div>
+        <div class="w-desc">Relevancia de las categorías del negocio según la franja horaria actual. Calculado en vivo.</div>
+      </div>
+      <div class="w-card w-pop">
+        <div class="w-name">POP — Popularidad</div>
+        <div class="w-pct">15%</div>
+        <div class="w-desc">log(1 + review_count) normalizado. Prior bayesiano: suaviza negocios sin señal CF/CB.</div>
+      </div>
+    </div>
+  </div>
+  <div class="connector-v"></div>
+
+  <!-- Output -->
+  <div class="output-card" style="margin-bottom:0">
+    <div>
+      <div class="out-main">Ranking final de negocios</div>
+      <div class="out-sub">Ordenado por match desc · ExplanationCard expone el breakdown CF / CTX / POP por negocio</div>
+    </div>
+    <div class="out-badge">match ∈ [1, 99]</div>
+  </div>
+
+  <!-- Burke -->
+  <div class="burke-card">
+    <div class="burke-title">Clasificación según Burke (2002) — Taxonomía de híbridos</div>
+    <div class="burke-pills">
+      <span class="burke-pill bp-cascade">Cascade — SVD++ genera candidatos → CTX re-ordena</span>
+      <span class="burke-pill bp-switch">Switching — SVD++ ↔ TF-IDF según cold/warm</span>
+      <span class="burke-pill bp-weighted">Weighted — CF + CTX + POP dentro de cada rama</span>
+    </div>
+    <div class="burke-desc">
+      El recomendador <strong>primario (fuerte)</strong> es SVD++: genera el score base para todos los candidatos.
+      El <strong>secundario (débil)</strong> es el re-ranker contextual: refina el orden sin invertir grandes diferencias de CF.
+      Para usuarios sin historial, el sistema hace un <strong>Switching explícito</strong> al modelo de contenido TF-IDF —
+      porque no existe solución algebraica para un usuario fuera del trainset sin reentrenar.
+      Dentro de cada rama, los tres componentes se combinan linealmente (<strong>Weighted hybrid</strong>).
+    </div>
+  </div>
+
+</div><!-- /phase online -->
+
+<div class="footer">Lantern · MINE 4201 · 2026-1 · Universidad de los Andes</div>
+
+</body>
+</html>

@@ -4,10 +4,11 @@ from fastapi import APIRouter, HTTPException, Query, Depends
 from app.models import RecommendationsResponse, RecommendationModel, ExplanationModel, SignalDetailsModel
 from app.services import recommender, business_store
 from app.auth import get_current_user
+from app.config import settings
 
 router = APIRouter()
 
-_CF_REASONING  = "Usuarios con historial similar valoraron este lugar altamente (SVD++, 50 factores latentes)."
+_CF_REASONING  = f"Usuarios con historial similar valoraron este lugar altamente (SVD++, {settings.SVDPP_N_FACTORS} factores latentes)."
 _CB_REASONING  = "El contenido de este lugar coincide con tus preferencias declaradas (TF-IDF content model)."
 _CTX_REASONING = "Encaja con el contexto actual: categoría, hora y zona."
 _POP_REASONING = "Muy popular en el vecindario — alto volumen de reseñas recientes."
