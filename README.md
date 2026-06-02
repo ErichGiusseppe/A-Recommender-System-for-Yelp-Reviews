@@ -201,6 +201,10 @@ python generate_parquets.py
 # → data/top_n.parquet, explanations.parquet, business_meta.parquet,
 #    content_model.joblib, eval.json
 
+# 2. Horarios de negocios (~10 s) — necesario para el pre-filtro is_open
+python generate_hours.py
+# → data/business_hours.parquet
+
 # 2. Reviews (~2-4 min, requiere business_meta.parquet)
 python generate_reviews.py
 # → data/reviews_sample.parquet
