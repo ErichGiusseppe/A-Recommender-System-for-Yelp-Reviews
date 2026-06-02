@@ -2,7 +2,7 @@ from datetime import datetime
 from types import SimpleNamespace
 from fastapi import APIRouter, HTTPException, Query, Depends
 from app.models import BusinessModel, BusinessCreate, CategoryModel, PaginatedBusinesses
-from app.services import business_store, recommender
+from app.services import business_store, recommender, business_hours
 from app.auth import get_current_user, require_auth
 from app.database import get_conn
 import json
@@ -78,6 +78,19 @@ def list_businesses(
         items = [b for b in items if b["city"].lower() == city.lower()]
     if neighborhood:
         items = [b for b in items if b["neighborhood"].lower() == neighborhood.lower()]
+
+    # Pre-filter: exclude businesses that are currently closed.
+    # datetime.now() uses the server's local time — the Yelp hours are stored
+    # without timezone so we treat them as the server's local time (acceptable
+    # approximation for a demo; production would use the business's city timezone).
+    # Fail-open: if hours data is unavailable for a business, it is included.
+    # Fallback: if the filter would leave fewer than 20 businesses, skip it to
+    # avoid empty results at unusual hours (late night, early morning).
+    MIN_AFTER_FILTER = 20
+    now = datetime.now()
+    open_items = [b for b in items if business_hours.is_open_now(b["id"], now)]
+    if len(open_items) >= MIN_AFTER_FILTER:
+        items = open_items
 
     user_ratings = (
         _load_user_ratings(user_id) if not current_user.is_guest else None

@@ -6,7 +6,7 @@ from fastapi.staticfiles import StaticFiles
 from app.config import settings
 from app.models import HealthResponse
 from app.routers import businesses, users, recommendations, search, auth_router, reviews
-from app.services import recommender, business_store
+from app.services import recommender, business_store, business_hours
 
 _STARTED_AT = datetime.now(timezone.utc).isoformat()
 
@@ -17,6 +17,7 @@ async def lifespan(app: FastAPI):
     init_db()
     business_store.startup()
     recommender.startup()
+    business_hours.startup()
     yield
 
 
