@@ -93,27 +93,50 @@ _CAT_IMAGES: dict[str, list[str]] = {
 
 
 def _load_photos() -> None:
-    """Load photos.json → _biz_photos dict (business_id → [photo_id, ...])."""
+    """Load photos.json → _biz_photos dict (business_id → [photo_id, ...]).
+
+    Tries the local filesystem first; falls back to GCS if the local file
+    is missing (production containers may not have it baked in).
+    """
     global _biz_photos
-    if not PHOTOS_JSON.exists():
-        logger.info("photos.json not found — gallery will use Unsplash fallback")
-        return
+
+    # Determine source: local file or GCS
+    gcs_url = f"{PHOTOS_BASE_URL}/photos.json"
+    source_desc = str(PHOTOS_JSON)
+
+    if PHOTOS_JSON.exists():
+        import io
+        content = PHOTOS_JSON.read_bytes()
+        lines_iter = io.TextIOWrapper(io.BytesIO(content), encoding="utf-8")
+    else:
+        # Fallback: fetch from GCS (PHOTOS_BASE_URL/photos.json)
+        try:
+            import urllib.request
+            req = urllib.request.urlopen(gcs_url, timeout=30)
+            import io
+            lines_iter = io.TextIOWrapper(req, encoding="utf-8")
+            source_desc = gcs_url
+            logger.info("photos.json not found locally — loading from %s", gcs_url)
+        except Exception as exc:
+            logger.info("photos.json not found locally or remotely (%s) — Unsplash fallback", exc)
+            return
+
     try:
         biz_to_ids: dict[str, list[str]] = {}
-        with open(PHOTOS_JSON, encoding="utf-8") as f:
-            for line in f:
-                line = line.strip()
-                if not line:
-                    continue
-                obj = json.loads(line)
-                bid = obj.get("business_id", "")
-                pid = obj.get("photo_id", "")
-                if bid and pid:
-                    biz_to_ids.setdefault(bid, []).append(pid)
+        for line in lines_iter:
+            line = line.strip()
+            if not line:
+                continue
+            obj = json.loads(line)
+            bid = obj.get("business_id", "")
+            pid = obj.get("photo_id", "")
+            if bid and pid:
+                biz_to_ids.setdefault(bid, []).append(pid)
         _biz_photos = biz_to_ids
-        logger.info("business_store: loaded photos for %d businesses", len(_biz_photos))
+        logger.info("business_store: loaded photos for %d businesses from %s",
+                    len(_biz_photos), source_desc)
     except Exception as exc:
-        logger.warning("Error loading photos.json (%s) — gallery will use Unsplash", exc)
+        logger.warning("Error loading photos.json (%s) — Unsplash fallback", exc)
 
 
 def _pick_photo(category: str, business_id: str) -> str:

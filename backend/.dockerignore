@@ -11,8 +11,10 @@ notebooks/
 # Raw Yelp dataset — only for generating parquets, not at runtime
 data/yelp_dataset/
 
-# Photos 7.4GB — served via Unsplash fallback in production
-data/real/
+# Photos actual JPGs — served from GCS bucket gs://lantern-photos-rs26
+data/real/photos/photos/
+# Keep photos.json (business_id → photo_id mapping, 24MB)
+# Keep data/real/photos/photos.json in the image
 
 # Archives
 data/*.zip

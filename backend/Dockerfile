@@ -20,5 +20,6 @@ COPY data/ ./data/
 
 EXPOSE 8080
 
-# Workers=1: SVD++ model is loaded once in-process (not safe to fork after load)
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8080", "--workers", "1"]
+# 2 workers: each handles independent requests in parallel (2× throughput for concurrent users).
+# Each worker loads its own model copy (~1.5GB RAM each) → requires at least 8GB total.
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8080", "--workers", "2"]

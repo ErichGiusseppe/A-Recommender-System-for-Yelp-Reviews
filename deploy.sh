@@ -32,13 +32,13 @@ gcloud run deploy lantern-api \
   --platform=managed \
   --region="$REGION" \
   --project="$PROJECT_ID" \
-  --memory=8Gi \
-  --cpu=4 \
+  --memory=16Gi \
+  --cpu=8 \
   --min-instances=1 \
   --max-instances=3 \
   --timeout=300 \
-  --concurrency=10 \
-  --set-env-vars="JWT_SECRET=lantern-prod-2026-mine4201" \
+  --concurrency=20 \
+  --set-env-vars="JWT_SECRET=lantern-prod-2026-mine4201,PHOTOS_BASE_URL=https://storage.googleapis.com/lantern-photos-rs26" \
   --allow-unauthenticated \
   --port=8080
 
@@ -49,11 +49,25 @@ echo "  Backend URL: $API_URL"
 
 # ── FRONTEND ─────────────────────────────────────────────────────────────────
 echo "[3/4] Building frontend image via Cloud Build (bakes API URL)..."
+# Pass VITE_API_URL as a Docker build-arg via an inline cloudbuild config.
+# (gcloud builds submit --tag does not support --build-arg directly.)
+cat > /tmp/lantern-frontend-cloudbuild.yaml <<EOF
+steps:
+  - name: 'gcr.io/cloud-builders/docker'
+    args:
+      - build
+      - '--build-arg'
+      - 'VITE_API_URL=$API_URL'
+      - '-t'
+      - '$FRONTEND_IMAGE'
+      - '.'
+images:
+  - '$FRONTEND_IMAGE'
+EOF
 gcloud builds submit \
-  --tag "$FRONTEND_IMAGE" \
+  --config=/tmp/lantern-frontend-cloudbuild.yaml \
   --project="$PROJECT_ID" \
   --timeout=900 \
-  --build-arg="VITE_API_URL=$API_URL" \
   "$SCRIPT_DIR/frontend"
 
 echo "[4/4] Deploying frontend to Cloud Run..."

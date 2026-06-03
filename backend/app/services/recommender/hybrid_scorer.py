@@ -18,7 +18,7 @@ from typing import Optional
 import numpy as np
 
 from app.config import settings
-from app.services.contextual_scorer import live_ctx_score
+from app.services.contextual_scorer import CTX_SCORES, get_time_bucket
 from . import _state as state
 from .svdpp_engine import (
     build_warm_user_vector,
@@ -147,13 +147,24 @@ def score_businesses_for_user(
 
     # ── Per-business scoring loop ──────────────────────────────────────────────
     result = []
+    # Pre-compute the CTX bucket scores once — avoids calling get_time_bucket()
+    # and dict.get() on CTX_SCORES on every iteration of the per-business loop.
+    ctx_bucket_scores: dict[str, int] = CTX_SCORES.get(get_time_bucket(hour), {}) if hour is not None else {}
+
     for b in businesses:
         if b["id"] in rated_ids:
             continue  # exclude already-rated businesses
 
         biz     = dict(b)
         bid     = biz["id"]
-        ctx_live = live_ctx_score(biz.get("tags") or [], hour) if hour is not None else 0.0
+        # CTX: look up the best tag score for this business against the pre-computed bucket
+        ctx_live = 0.0
+        if ctx_bucket_scores:
+            for tag in (biz.get("tags") or []):
+                v = ctx_bucket_scores.get(tag, 0)
+                if v > ctx_live:
+                    ctx_live = v
+            ctx_live /= 100.0
         pop_raw  = state.biz_pop_cb.get(bid, 0.0)
 
         if folded_scores is not None:

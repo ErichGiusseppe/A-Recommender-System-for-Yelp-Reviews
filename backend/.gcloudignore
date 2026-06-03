@@ -9,8 +9,9 @@
 # Raw Yelp dataset — 8.7GB, solo para generar parquets
 data/yelp_dataset/
 
-# Fotos — 7.4GB
-data/real/
+# Fotos JPG — 7.3GB, servidas desde gs://lantern-photos-rs26
+# Se excluye solo el directorio de JPGs; photos.json (24MB) sí va en el build
+data/real/photos/photos/
 
 # Archives
 data/*.zip
