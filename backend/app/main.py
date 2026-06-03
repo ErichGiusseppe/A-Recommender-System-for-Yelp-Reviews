@@ -1,3 +1,4 @@
+import os
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from fastapi import FastAPI
@@ -9,6 +10,10 @@ from app.routers import businesses, users, recommendations, search, auth_router,
 from app.services import recommender, business_store, business_hours
 
 _STARTED_AT = datetime.now(timezone.utc).isoformat()
+
+# Extra origins injected at deploy time via ALLOWED_ORIGINS env var (comma-separated).
+# This lets us update CORS without rebuilding the image.
+_extra_origins = [o.strip() for o in os.getenv("ALLOWED_ORIGINS", "").split(",") if o.strip()]
 
 
 @asynccontextmanager
@@ -33,8 +38,9 @@ app.add_middleware(
     allow_origins=[
         "http://localhost:5173",
         "http://127.0.0.1:5173",
+        *_extra_origins,
     ],
-    allow_origin_regex=r"https://.*\.vercel\.app",
+    allow_origin_regex=r"https://(.*\.vercel\.app|.*\.web\.app|.*\.firebaseapp\.com|.*\.run\.app)",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

@@ -1,0 +1,87 @@
+#!/usr/bin/env bash
+# deploy.sh — Build y despliegue completo de Lantern (backend + frontend) en GCP
+# Uso: bash deploy.sh
+set -euo pipefail
+
+PROJECT_ID="lantern-rs-26"
+REGION="us-central1"
+REPO="lantern-repo"
+API_IMAGE="$REGION-docker.pkg.dev/$PROJECT_ID/$REPO/lantern-api:latest"
+FRONTEND_IMAGE="$REGION-docker.pkg.dev/$PROJECT_ID/$REPO/lantern-frontend:latest"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+
+echo "=== Lantern Deploy — Backend + Frontend ==="
+echo "Proyecto : $PROJECT_ID"
+echo "Región   : $REGION"
+echo ""
+
+gcloud config set project "$PROJECT_ID"
+
+# ── BACKEND ──────────────────────────────────────────────────────────────────
+echo "[1/4] Building backend image via Cloud Build..."
+gcloud builds submit \
+  --tag "$API_IMAGE" \
+  --project="$PROJECT_ID" \
+  --timeout=1800 \
+  --machine-type=e2-highcpu-8 \
+  "$SCRIPT_DIR/backend"
+
+echo "[2/4] Deploying backend to Cloud Run..."
+gcloud run deploy lantern-api \
+  --image="$API_IMAGE" \
+  --platform=managed \
+  --region="$REGION" \
+  --project="$PROJECT_ID" \
+  --memory=8Gi \
+  --cpu=4 \
+  --min-instances=1 \
+  --max-instances=3 \
+  --timeout=300 \
+  --concurrency=10 \
+  --set-env-vars="JWT_SECRET=lantern-prod-2026-mine4201" \
+  --allow-unauthenticated \
+  --port=8080
+
+API_URL=$(gcloud run services describe lantern-api \
+  --region="$REGION" --project="$PROJECT_ID" --format="value(status.url)")
+
+echo "  Backend URL: $API_URL"
+
+# ── FRONTEND ─────────────────────────────────────────────────────────────────
+echo "[3/4] Building frontend image via Cloud Build (bakes API URL)..."
+gcloud builds submit \
+  --tag "$FRONTEND_IMAGE" \
+  --project="$PROJECT_ID" \
+  --timeout=900 \
+  --build-arg="VITE_API_URL=$API_URL" \
+  "$SCRIPT_DIR/frontend"
+
+echo "[4/4] Deploying frontend to Cloud Run..."
+gcloud run deploy lantern-frontend \
+  --image="$FRONTEND_IMAGE" \
+  --platform=managed \
+  --region="$REGION" \
+  --project="$PROJECT_ID" \
+  --memory=256Mi \
+  --cpu=1 \
+  --min-instances=0 \
+  --max-instances=3 \
+  --timeout=30 \
+  --allow-unauthenticated \
+  --port=8080
+
+FRONTEND_URL=$(gcloud run services describe lantern-frontend \
+  --region="$REGION" --project="$PROJECT_ID" --format="value(status.url)")
+
+# Allow frontend URL in backend CORS
+echo "  Updating backend CORS to allow frontend..."
+gcloud run services update lantern-api \
+  --region="$REGION" \
+  --project="$PROJECT_ID" \
+  --update-env-vars="ALLOWED_ORIGINS=$FRONTEND_URL"
+
+echo ""
+echo "=== Deploy completo ==="
+echo "Backend  : $API_URL"
+echo "Frontend : $FRONTEND_URL"
+echo "Docs     : $API_URL/docs"

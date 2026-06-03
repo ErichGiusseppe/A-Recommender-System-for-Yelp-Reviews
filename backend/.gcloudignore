@@ -1,0 +1,34 @@
+# .gcloudignore — lo que Cloud Build NO necesita subir a GCS.
+# El Dockerfile usa los datos de data/ pero esos se manejan por capas de caché.
+# Solo subimos el código fuente y los artefactos imprescindibles.
+
+.gcloudignore
+.gitignore
+.git
+
+# Raw Yelp dataset — 8.7GB, solo para generar parquets
+data/yelp_dataset/
+
+# Fotos — 7.4GB
+data/real/
+
+# Archives
+data/*.zip
+
+# Python cache
+__pycache__/
+.venv/
+venv/
+*.pyc
+*.pyo
+
+# Dev scripts y docs
+generate_parquets.py
+generate_reviews.py
+generate_hours.py
+generate_docs.py
+generate_quick_ref.py
+find_test_users.py
+notebooks/
+*.ipynb
+REFACTOR_PLAN.md

@@ -1,8 +1,30 @@
 venv/
+.venv/
 __pycache__/
 *.py[cod]
 .pytest_cache/
 notebooks/
-data/yelp_dataset/
 *.ipynb
 .env
+.env.*
+
+# Raw Yelp dataset — only for generating parquets, not at runtime
+data/yelp_dataset/
+
+# Photos 7.4GB — served via Unsplash fallback in production
+data/real/
+
+# Archives
+data/*.zip
+
+# Local SQLite — recreated at startup by init_db()
+data/lantern.db
+
+# Dev/doc scripts
+generate_parquets.py
+generate_reviews.py
+generate_hours.py
+generate_docs.py
+generate_quick_ref.py
+find_test_users.py
+REFACTOR_PLAN.md
