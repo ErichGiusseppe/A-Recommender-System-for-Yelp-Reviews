@@ -6,11 +6,13 @@ set -euo pipefail
 
 PROJECT_ID="lantern-rs-26"
 REGION="us-central1"
+PHOTOS_BUCKET="gs://lantern-photos-rs26"
 
 echo "=== Lantern Teardown ==="
 echo "ADVERTENCIA: se eliminarán TODOS los recursos del proyecto $PROJECT_ID"
 echo "  - Cloud Run: lantern-api, lantern-frontend"
 echo "  - Artifact Registry: lantern-repo (todas las imágenes)"
+echo "  - GCS bucket: $PHOTOS_BUCKET (200k fotos)"
 echo "  - Proyecto GCP: $PROJECT_ID"
 read -r -p "¿Confirmar? (escribe 'SI' para continuar): " confirm
 if [[ "$confirm" != "SI" ]]; then
@@ -20,19 +22,23 @@ fi
 
 gcloud config set project "$PROJECT_ID"
 
-echo "[1/3] Eliminando Cloud Run services..."
+echo "[1/4] Eliminando Cloud Run services..."
 for SERVICE in lantern-api lantern-frontend; do
   gcloud run services delete "$SERVICE" \
     --region="$REGION" --project="$PROJECT_ID" --quiet 2>/dev/null \
     && echo "  $SERVICE eliminado" || echo "  $SERVICE no existía"
 done
 
-echo "[2/3] Eliminando Artifact Registry repo..."
+echo "[2/4] Eliminando GCS bucket de fotos..."
+gsutil -m rm -r "$PHOTOS_BUCKET" 2>/dev/null \
+  && echo "  Bucket eliminado" || echo "  Bucket no existía"
+
+echo "[3/4] Eliminando Artifact Registry repo..."
 gcloud artifacts repositories delete lantern-repo \
   --location="$REGION" --project="$PROJECT_ID" --quiet 2>/dev/null \
   && echo "  Repositorio eliminado" || echo "  Repositorio no existía"
 
-echo "[3/3] Eliminando proyecto GCP '$PROJECT_ID'..."
+echo "[4/4] Eliminando proyecto GCP '$PROJECT_ID'..."
 gcloud projects delete "$PROJECT_ID" --quiet
 echo "  Proyecto eliminado"
 
