@@ -21,16 +21,21 @@ def _load_yelp_reviews(user_id: str) -> list[dict]:
         import pandas as pd  # type: ignore
         df = pd.read_parquet(_DEMO_REVIEWS_PATH)
         user_df = df[df["user_id"] == user_id].sort_values("date", ascending=False)
-        return [
-            {
-                "business_id":   r["business_id"],
-                "business_name": str(r.get("business_name") or ""),
+        out = []
+        for r in user_df.to_dict("records"):
+            bid = r["business_id"]
+            # Enrich with category/city from the in-memory catalog when available
+            biz = business_store.get_business(bid) or {}
+            out.append({
+                "business_id":   bid,
+                "business_name": str(r.get("business_name") or biz.get("name", "")),
+                "category":      biz.get("category", ""),
+                "city":          str(r.get("city") or biz.get("city", "")),
                 "stars":         int(r["stars"]),
                 "text":          str(r["text"] or ""),
                 "created_at":    str(r["date"]) + "T00:00:00+00:00",
-            }
-            for r in user_df.to_dict("records")
-        ]
+            })
+        return out
     except Exception:
         return []
 
@@ -44,6 +49,8 @@ class ReviewSubmit(BaseModel):
 class ReviewOut(BaseModel):
     business_id: str
     business_name: str = ""
+    category: str = ""
+    city: str = ""
     stars: int
     text: str
     created_at: str
@@ -84,21 +91,24 @@ def my_reviews(current_user: SimpleNamespace = Depends(require_auth)):
             "WHERE user_id=? ORDER BY created_at DESC",
             (user_id,),
         ).fetchall()
-    app_reviews = [
-        ReviewOut(
+    app_reviews = []
+    for r in rows:
+        biz = business_store.get_business(r["business_id"]) or {}
+        app_reviews.append(ReviewOut(
             business_id=r["business_id"],
-            business_name=(business_store.get_business(r["business_id"]) or {}).get("name", ""),
+            business_name=biz.get("name", ""),
+            category=biz.get("category", ""),
+            city=biz.get("city", ""),
             stars=r["stars"],
             text=r["text"],
             created_at=r["created_at"],
-        )
-        for r in rows
-    ]
+        ))
     app_biz_ids = {r.business_id for r in app_reviews}
 
     # Historical Yelp reviews — shown only for demo users (parquet pre-generated)
     yelp_reviews = [
         ReviewOut(business_id=r["business_id"], business_name=r["business_name"],
+                  category=r.get("category", ""), city=r.get("city", ""),
                   stars=r["stars"], text=r["text"], created_at=r["created_at"])
         for r in _load_yelp_reviews(user_id)
         if r["business_id"] not in app_biz_ids  # app review takes precedence

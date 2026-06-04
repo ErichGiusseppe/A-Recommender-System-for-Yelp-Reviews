@@ -22,7 +22,7 @@ class BusinessModel(BaseModel):
     rating: float
     reviews: int
     price:       Literal["$", "$$", "$$$", "$$$$"] = "$$"
-    price_known: bool = False
+    priceKnown: bool = False
     match: int
     image: str
     cover: str

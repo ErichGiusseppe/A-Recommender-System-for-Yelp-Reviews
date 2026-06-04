@@ -213,7 +213,7 @@ def _row_to_biz(row: dict) -> dict:
         "rating":       _safe_float(row.get("stars"), 4.0),
         "reviews":      int(row.get("review_count") or 0),
         "price":        _price_label(row.get("price_range")),
-        "price_known":  _price_is_known(row.get("price_range")),
+        "priceKnown":   _price_is_known(row.get("price_range")),
         "match":        0,          # injected per-user at request time
         "image":        image_url,
         "cover":        cover_url,

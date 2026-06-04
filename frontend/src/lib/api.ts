@@ -50,6 +50,8 @@ export interface ReviewSubmit {
 export interface ReviewOut {
   business_id: string;
   business_name: string;
+  category: string;
+  city: string;
   stars: number;
   text: string;
   created_at: string;

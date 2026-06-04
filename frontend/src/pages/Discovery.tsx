@@ -150,69 +150,57 @@ export default function Discovery() {
     "Local Services", "Home Services", "Health & Medical", "Automotive",
   ]);
 
+  const currentCity = city || "Philadelphia";
+
   const becauseLikedCategory = useMemo(() => {
-    // Step 1: businesses the user ACTUALLY rated ≥4 stars (from their review history).
-    // This makes "Because you liked X" semantically honest — X is a place they visited.
-    // Reviews come from both the app (SQLite) and Yelp history (demo users).
-    const likedIds = new Set(
-      reviews.filter(r => r.stars >= 4).map(r => r.business_id)
+    // The anchor is a real place the user rated ≥4★ (honest "Because you liked X").
+    // The recommendations are NEW same-category places they haven't rated, predicted by SVD++.
+
+    // Step 1: businesses the user rated ≥4★ in the current city, with a specific category.
+    // The anchor comes from their FULL review history (not just the visible top-50),
+    // so it works even when none of their rated places are in today's ranking.
+    const likedReviews = reviews.filter(
+      r => r.stars >= 4
+        && r.category
+        && !GENERIC_CATS.has(r.category)
+        && (!r.city || r.city === currentCity)
     );
+    if (!likedReviews.length) return null;
 
-    // Step 2: find the intersection with the current city's businesses.
-    // These are businesses the user liked AND are relevant right now.
-    const actuallyLiked = fallbackBizs.filter(
-      b => likedIds.has(b.id) && !GENERIC_CATS.has(b.category)
-    );
+    const likedIds = new Set(reviews.map(r => r.business_id));
 
-    // Step 3: determine the anchor source and whether the title is honest.
-    // - "Because you liked X" → X is a business the user actually rated ≥4★
-    // - "You might also enjoy X" → X is only predicted, never rated (fallback)
-    let anchorCandidates = actuallyLiked;
-    let titleIsHonest    = true;
-
-    if (!anchorCandidates.length) {
-      // No overlap between rated businesses and current view — use CF prediction
-      // but the title will say "You might also enjoy" instead.
-      anchorCandidates = fallbackBizs.filter(b => b.cf > 50 && !GENERIC_CATS.has(b.category));
-      titleIsHonest    = false;
+    // Step 2: group liked reviews by category.
+    const byCategory: Record<string, typeof likedReviews> = {};
+    for (const r of likedReviews) {
+      if (!byCategory[r.category]) byCategory[r.category] = [];
+      byCategory[r.category].push(r);
     }
 
-    if (!anchorCandidates.length) return null;
-
-    // Step 4: group anchor candidates by category and pick the best anchor per category.
-    const byCategory: Record<string, typeof anchorCandidates> = {};
-    for (const b of anchorCandidates) {
-      if (!byCategory[b.category]) byCategory[b.category] = [];
-      byCategory[b.category].push(b);
-    }
-
-    // Step 5: for each category, build the recommendation pool (CF > 20, same category).
-    // Require at least 3 total (anchor + 2 recs).
+    // Step 3: for each category, the recommendation pool is same-category businesses
+    // in the current view (CF > 20) that the user has NOT already rated — new discoveries.
     const qualified = Object.entries(byCategory)
-      .map(([cat, candidates]) => {
-        // Anchor = highest CF among businesses the user actually liked in this category
-        const anchor = [...candidates].sort((a, b) => b.cf - a.cf)[0];
-        // Recs = any business in this city with CF > 20 and same category
+      .map(([cat, likedInCat]) => {
         const pool = fallbackBizs
-          .filter(b => b.cf > 20 && b.category === cat)
+          .filter(b => b.category === cat && b.cf > 20 && !likedIds.has(b.id))
           .sort((a, b) => b.cf - a.cf);
-        return { category: cat, anchor, pool, titleIsHonest };
+        // Anchor = most recent place the user liked in this category (reviews are date-sorted)
+        const anchor = likedInCat[0];
+        return { category: cat, anchorName: anchor.business_name, anchorId: anchor.business_id, pool };
       })
-      .filter(({ pool }) => pool.length >= 3)
+      .filter(({ pool }) => pool.length >= 2) // need at least 2 new recommendations
       .sort((a, b) => b.pool.length - a.pool.length)
       .slice(0, 3);
 
     if (!qualified.length) return null;
 
     const picked = qualified[Math.floor(Math.random() * qualified.length)];
-    return { category: picked.category, anchor: picked.anchor, recs: picked.pool, titleIsHonest: picked.titleIsHonest };
+    return { category: picked.category, anchorName: picked.anchorName, anchorId: picked.anchorId, recs: picked.pool };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [fallbackBizs.map(b => b.id).join(","), reviews.map(r => r.business_id).join(",")]);
+  }, [fallbackBizs.map(b => b.id).join(","), reviews.map(r => r.business_id).join(","), currentCity]);
 
-  const becauseLiked     = becauseLikedCategory?.anchor ?? null;
-  const becauseLikedHonest = becauseLikedCategory?.titleIsHonest ?? false;
+  const becauseLikedName = becauseLikedCategory?.anchorName ?? null;
   const becauseList      = becauseLikedCategory
-    ? becauseLikedCategory.recs.filter(b => b.id !== becauseLiked?.id).slice(0, 3)
+    ? becauseLikedCategory.recs.slice(0, 3)
     : [];
 
   // Hidden gems: high rating, fewest reviews (less-discovered places)
@@ -403,17 +391,16 @@ export default function Discovery() {
           )}
         </section>
 
-        {/* Because you liked — anchor is a business the user actually rated ≥4★.
-            If no rated business overlaps the current view, the title softens to
-            "You might also enjoy" (prediction-based, not a real past like). */}
-        {becauseLiked && becauseList.length > 0 && (
+        {/* Because you liked — anchor is a place the user actually rated ≥4★ (from their
+            full review history); the recommendations are new same-category places. */}
+        {becauseLikedName && becauseList.length > 0 && (
           <section className="pb-16">
             <SectionHeader
               eyebrow="Pattern matching"
               title={
                 <>
-                  {becauseLikedHonest ? "Because you liked " : "You might also enjoy "}
-                  <em style={{ fontStyle: "italic" }}>{becauseLiked.name}</em>
+                  Because you liked{" "}
+                  <em style={{ fontStyle: "italic" }}>{becauseLikedName}</em>
                 </>
               }
               aside={`${becauseList.length} nearby in this lane`}
